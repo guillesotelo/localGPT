@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HP Assistant</title>
+</head>
+<body>
+    <h1>HP Assistant</h1>
+    <form action="/" method="POST" enctype="multipart/form-data">
+        <label for="user_prompt">User Prompt:</label>
+        <input type="text" name="user_prompt" id="user_prompt" required>
+        <button type="submit">Submit Prompt</button>
+
+        <label for="documents">Upload Documents:</label>
+        <input type="file" name="documents" id="documents" multiple>
+        <button type="submit" name="action" value="upload">Upload Files</button>
+        <button type="submit" name="action" value="reset">Reset Files</button>
+    </form>
+
+    <% if (show_response_modal) { %>
+    <div id="response-modal">
+        <h2>Response:</h2>
+        <p>Prompt: <%= response_dict.Prompt %></p>
+        <p>Answer: <%= response_dict.Answer %></p>
+        <ul>
+            <% response_dict.Sources.forEach(([name, link]) => { %>
+            <li><a href="<%= link %>"><%= name %></a></li>
+            <% }) %>
+        </ul>
+    </div>
+    <% } %>
+</body>
+</html>

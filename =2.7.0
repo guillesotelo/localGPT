@@ -1,0 +1,3 @@
+Looking in indexes: https://pypi.org/simple, https://:****@ara-artifactory.server-name.biz/artifactory/api/pypi/ARTCSP-SDK-PyPi-LTS/simple
+Requirement already satisfied: pydantic in /home/guillermo/anaconda3/envs/localGPT/lib/python3.10/site-packages (1.10.19)
+Requirement already satisfied: typing-extensions>=4.2.0 in /home/guillermo/anaconda3/envs/localGPT/lib/python3.10/site-packages (from pydantic) (4.12.2)

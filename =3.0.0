@@ -1,0 +1,6 @@
+Looking in indexes: https://pypi.org/simple, https://:****@ara-artifactory.server-name.biz/artifactory/api/pypi/ARTCSP-SDK-PyPi-LTS/simple
+Collecting oauthlib
+  Downloading oauthlib-3.2.2-py3-none-any.whl.metadata (7.5 kB)
+Downloading oauthlib-3.2.2-py3-none-any.whl (151 kB)
+Installing collected packages: oauthlib
+Successfully installed oauthlib-3.2.2

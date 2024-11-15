@@ -166,5 +166,6 @@ cython_debug/
 
 #MacOS
 .DS_Store
-SOURCE_DOCUMENTS/.DS_Store
+
 SOURCE_DOCUMENTS/*
+!SOURCE_DOCUMENTS/.gitkeep

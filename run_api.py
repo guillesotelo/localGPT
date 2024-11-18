@@ -12,16 +12,16 @@ from flask_cors import CORS
 
 import torch
 from flask import Flask, jsonify, request, Response
-from langchain.chains import RetrievalQA
+from langchain.chains import RetrievalQA, create_history_aware_retriever
 from langchain.chains.retrieval import create_retrieval_chain
 from langchain_community.embeddings import HuggingFaceInstructEmbeddings
 from run_localGPT import load_model
-from prompt_template_utils import get_prompt_template
+from prompt_template_utils import get_prompt_template, system_prompt
 from langchain.vectorstores import Chroma
 from werkzeug.utils import secure_filename
 from streaming_chain import StreamingChain
 from langchain.chains.combine_documents import create_stuff_documents_chain
-from prompt_template_utils import get_chat_prompt
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from constants import CHROMA_SETTINGS, EMBEDDING_MODEL_NAME, PERSIST_DIRECTORY, MODEL_ID, MODEL_BASENAME
 from threading import Lock
 # For enterprise use
@@ -57,7 +57,7 @@ DB = Chroma(
     client_settings=CHROMA_SETTINGS,
 )
 
-RETRIEVER = DB.as_retriever()
+retriever = DB.as_retriever()
 
 # Load the model with streaming support
 LLM = load_model(device_type=DEVICE_TYPE, model_id=MODEL_ID, model_basename=MODEL_BASENAME)
@@ -72,56 +72,64 @@ def prompt_route():
     global request_lock
     user_prompt = request.form.get("user_prompt")
     use_context = request.form.get("use_context", "true").lower() == "true"
+    use_history = request.form.get("use_history", "false").lower() == "true"
 
     with request_lock:
         if not user_prompt:
             return "No user prompt received", 400
         
         def generate_stream():
-            # Use documents context
-            prompt, memory = get_prompt_template(promptTemplate_type="mistral", history=False, user_prompt=user_prompt, use_context=use_context)
-            
-            if use_context:
-
-                QA = RetrievalQA.from_chain_type(
-                    llm=LLM,
-                    chain_type="stuff",
-                    retriever=RETRIEVER,
-                    return_source_documents=SHOW_SOURCES,
-                    chain_type_kwargs={
-                        "prompt": prompt,
-                    },
+            prompt, memory = get_prompt_template(
+                promptTemplate_type="mistral", 
+                history=use_history, 
+                user_prompt=user_prompt, 
+                use_context=use_context
                 )
-                print(f"\n\n* Using context from documents *\n\n")
-                # question_answer_chain = create_stuff_documents_chain(QA, prompt)
-                # rag_chain = create_retrieval_chain(RETRIEVER, question_answer_chain)
-        
-                try:
-                    print("\nAnswer: \n")
-                    for token in QA(user_prompt)["result"]:
-                        if isinstance(token, dict):
-                            token = str(token)
-                        print(token, end="")
-                        yield token.encode("utf-8")
-                    print("\n\n")
-                except Exception as e:
-                    logging.error(f"Error during streaming: {str(e)}")
-                    yield "Error occurred during streaming".encode("utf-8")
+            
+            # Use documents context
+            if use_context:
+                ctx_system_prompt = f"""
+                       {system_prompt}
+                        \n\n
+                        {{history}}
+                        {{context}}
+                    """ if use_history else f"""
+                       {system_prompt}
+                        \n\n
+                        {{context}}
+                    """ 
+
+                ctx_prompt = ChatPromptTemplate.from_messages(
+                    [
+                        ("system", ctx_system_prompt),
+                        ("human", "{input}"),
+                    ]
+                )
+
+                question_answer_chain = create_stuff_documents_chain(LLM, ctx_prompt)
+                rag_chain = create_retrieval_chain(retriever, question_answer_chain)
+                chain = rag_chain.pick("answer")
+
+                for token in chain.stream({ "input": user_prompt }):
+                    yield token
                 
             # Chat with LLM only
             else:
                 print(f"\n\n* Using direct chat with LLM *\n\n")
                 input_data = {
                     "context": None,
-                    "question": user_prompt 
+                    "question": user_prompt,
+                    "history": use_history
                 }
 
                 try:
+                    print("\nAnswer: \n")
                     llm_chain = StreamingChain(LLM, prompt)
                     for token in llm_chain.stream(input_data=input_data):
                         if isinstance(token, dict):
                            token = str(token)
                         yield token.encode("utf-8")
+                    print("\n\n")
                 except Exception as e:
                     logging.error(f"Error during streaming: {str(e)}")
                     yield "Error occurred during streaming".encode("utf-8")
@@ -160,8 +168,7 @@ def save_document_route():
 @app.route("/api/run_ingest", methods=["GET"])
 def run_ingest_route():
     global DB
-    global RETRIEVER
-    global QA
+    global retriever
     try:
         if os.path.exists(PERSIST_DIRECTORY):
             try:
@@ -186,18 +193,8 @@ def run_ingest_route():
             embedding_function=EMBEDDINGS,
             client_settings=CHROMA_SETTINGS,
         )
-        RETRIEVER = DB.as_retriever()
-        prompt, memory = get_prompt_template(promptTemplate_type="llama", history=False)
+        retriever = DB.as_retriever()
 
-        QA = RetrievalQA.from_chain_type(
-            llm=LLM,
-            chain_type="stuff",
-            retriever=RETRIEVER,
-            return_source_documents=SHOW_SOURCES,
-            chain_type_kwargs={
-                "prompt": prompt,
-            },
-        )
         return "Script executed successfully: {}".format(result.stdout.decode("utf-8")), 200
     except Exception as e:
         return f"Error occurred: {str(e)}", 500

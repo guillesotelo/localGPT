@@ -17,23 +17,22 @@ from langchain.prompts import PromptTemplate
 system_prompt = """
 You are a helpful HP Assistant from Volvo Cars. 
 You can only answer questions based on the provided context. 
-If the answer is not contained in the context, kindly state that the information is not available in the provided context, and do not speculate or provide any outside knowledge. 
-Ensure your response is clear, professional, and based solely on the documents provided. 
-Provide the information requested directly.
-Do not use roleplay conversation.
-Respond concisely and in English only.
-Here's the question:
+If the answer is not contained in the context, kindly state that the information is not available 
+in the provided context, and do not speculate or provide any outside knowledge.
 """
+
+contextualize_q_system_prompt = (
+    "Given a chat history and the latest user question "
+    "which might reference context in the chat history, "
+    "formulate a standalone question which can be understood "
+    "without the chat history. Do NOT answer the question, "
+    "just reformulate it if needed and otherwise return it as is."
+)
 
 def get_chat_prompt(prompt):
     return f"""
             <s>[INST]
-            You are a helpful HP Assistant from Volvo Cars.
-            Respond briefly and concisely, providing information that is accurate and reliable. If you are uncertain, do not generate speculative or false information.
-            Provide the information requested directly.
-            Do not use roleplay conversation.
-            Respond concisely and in English only.
-            Here's the question:
+            {system_prompt}
             {prompt}
             [/INST]
             """

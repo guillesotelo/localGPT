@@ -5,23 +5,23 @@ import os
 import shutil
 import subprocess
 import argparse
-import sys
 import time
-from queue import Queue, Empty
 from flask_cors import CORS
 
 import torch
 from flask import Flask, jsonify, request, Response
-from langchain.chains import RetrievalQA, create_history_aware_retriever
+from langchain.chains import create_history_aware_retriever
 from langchain.chains.retrieval import create_retrieval_chain
 from langchain_community.embeddings import HuggingFaceInstructEmbeddings
 from run_localGPT import load_model
-from prompt_template_utils import get_prompt_template, system_prompt
+from prompt_template_utils import get_prompt_template, system_prompt, contextualize_q_system_prompt
 from langchain.vectorstores import Chroma
 from werkzeug.utils import secure_filename
 from streaming_chain import StreamingChain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.runnables.history import RunnableWithMessageHistory
+
 from constants import CHROMA_SETTINGS, EMBEDDING_MODEL_NAME, PERSIST_DIRECTORY, MODEL_ID, MODEL_BASENAME
 from threading import Lock
 # For enterprise use
@@ -46,8 +46,13 @@ logging.info(f"Running on: {DEVICE_TYPE}")
 logging.info(f"Display Source Documents set to: {SHOW_SOURCES}")
 
 # API queue addition
-request_lock = Lock()
+stream_lock = Lock()
 
+# Active requests
+active_streams = {}
+
+
+# Load embeddings Model
 EMBEDDINGS = HuggingFaceInstructEmbeddings(model_name=EMBEDDING_MODEL_NAME, model_kwargs={"device": DEVICE_TYPE})
 
 # Load the vectorstore
@@ -64,78 +69,141 @@ LLM = load_model(device_type=DEVICE_TYPE, model_id=MODEL_ID, model_basename=MODE
 
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, expose_headers=["Stream-ID"])
+
+
+#  ---------- API ROUTES ----------
 
 @app.route("/api/prompt_route", methods=["GET", "POST"])
 def prompt_route():
-    global QA
-    global request_lock
+    logging.info(">>> Entering /api/prompt_route")
     user_prompt = request.form.get("user_prompt")
-    use_context = request.form.get("use_context", "true").lower() == "true"
-    use_history = request.form.get("use_history", "false").lower() == "true"
+    use_context = request.form.get("use_context")
+    use_history = request.form.get("use_history")
+    stream_id = int(request.form.get("stream_id", str(int(time.time() * 1000))))
+    stop = request.form.get("stop", "false").lower() == "true"
 
-    with request_lock:
-        if not user_prompt:
-            return "No user prompt received", 400
+    if stop:
+        with stream_lock:
+            if stream_id not in active_streams:
+                return jsonify({"error": f"Stream {stream_id} not found"}), 404
+            active_streams[stream_id]['stop'] = True
+        logging.info(f"Stop signal sent for stream ID: {stream_id}")
+        return jsonify({"message": f"Stream {stream_id} stop signal issued."}), 200
+
+    if use_context is None:
+        use_context = True
+    else:
+        use_context = use_context.lower() == "true"
+
+    if use_history is None:
+        use_history = False
+    else:
+        use_history = use_history.lower() == "true"
         
-        def generate_stream():
-            prompt, memory = get_prompt_template(
-                promptTemplate_type="mistral", 
-                history=use_history, 
-                user_prompt=user_prompt, 
-                use_context=use_context
-                )
-            
-            # Use documents context
-            if use_context:
-                ctx_system_prompt = f"""
-                       {system_prompt}
-                        \n\n
-                        {{history}}
-                        {{context}}
-                    """ if use_history else f"""
-                       {system_prompt}
-                        \n\n
-                        {{context}}
-                    """ 
-
-                ctx_prompt = ChatPromptTemplate.from_messages(
-                    [
-                        ("system", ctx_system_prompt),
-                        ("human", "{input}"),
-                    ]
-                )
-
-                question_answer_chain = create_stuff_documents_chain(LLM, ctx_prompt)
-                rag_chain = create_retrieval_chain(retriever, question_answer_chain)
-                chain = rag_chain.pick("answer")
-
-                for token in chain.stream({ "input": user_prompt }):
-                    yield token
+    if not user_prompt:
+        return "No user prompt received", 400
+    
+    with stream_lock:
+        if stream_id in active_streams:
+            return jsonify({"error": f"Stream {stream_id} is already in progress"}), 409
+        active_streams[stream_id] = {"stop": False, "lock": Lock()}
+        
+        
+    def generate_stream():
+        try:
+            with active_streams[stream_id]["lock"]:
+                prompt, memory = get_prompt_template(
+                    promptTemplate_type="mistral", 
+                    history=False, 
+                    user_prompt=user_prompt, 
+                    use_context=use_context
+                    )
                 
-            # Chat with LLM only
-            else:
-                print(f"\n\n* Using direct chat with LLM *\n\n")
-                input_data = {
-                    "context": None,
-                    "question": user_prompt,
-                    "history": use_history
-                }
+                # Use documents context
+                if use_context:
+                    print(f"\n\n* * * Using chat with CONTEXT * * *\n")
+                    ctx_system_prompt = f"""
+                        {system_prompt}
+                            \n\n
+                            {{context}}
+                        """
+                    if use_history:
+                        contextualize_q_prompt = ChatPromptTemplate.from_messages(
+                            [
+                                ("system", contextualize_q_system_prompt),
+                                MessagesPlaceholder("chat_history"),
+                                ("human", "{input}"),
+                            ]
+                        )
+                        history_aware_retriever = create_history_aware_retriever(LLM, retriever, contextualize_q_prompt)
+                        ctx_history_prompt = ChatPromptTemplate.from_messages(
+                            [
+                                ("system", ctx_system_prompt),
+                                MessagesPlaceholder("chat_history"),
+                                ("human", "{input}"),
+                            ]
+                        )
+                        question_answer_chain = create_stuff_documents_chain(LLM, ctx_history_prompt)
+                        rag_chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
+                        chain = rag_chain.pick("answer")
+                        for token in chain.stream({ "input": user_prompt }):
+                            if active_streams.get(stream_id, {}).get('stop'):
+                                logging.info(f"Stopping stream {stream_id} due to user request.")
+                                break  # Exit the loop if stop signal is received
+                            yield token
+                        print("\n\n")
+                        
+                    else:
+                        ctx_prompt = ChatPromptTemplate.from_messages(
+                            [
+                                ("system", ctx_system_prompt),
+                                ("human", "{input}"),
+                            ]
+                        )
+                        question_answer_chain = create_stuff_documents_chain(LLM, ctx_prompt)
+                        rag_chain = create_retrieval_chain(retriever, question_answer_chain)
+                        
+                        chain = rag_chain.pick("answer")
+                        for token in chain.stream({ "input": user_prompt }):
+                            if active_streams.get(stream_id, {}).get('stop'):
+                                logging.info(f"Stopping stream {stream_id} due to user request.")
+                                break  # Exit the loop if stop signal is received
+                            yield token
+                        print("\n\n")
+                    
+                # Chat with LLM only
+                else:
+                    print(f"\n\n* * * Using direct chat with LLM * * *\n")
+                    input_data = {
+                        "context": None,
+                        "question": user_prompt,
+                        "history": use_history
+                    }
 
-                try:
-                    print("\nAnswer: \n")
-                    llm_chain = StreamingChain(LLM, prompt)
-                    for token in llm_chain.stream(input_data=input_data):
-                        if isinstance(token, dict):
-                           token = str(token)
-                        yield token.encode("utf-8")
-                    print("\n\n")
-                except Exception as e:
-                    logging.error(f"Error during streaming: {str(e)}")
-                    yield "Error occurred during streaming".encode("utf-8")
+                    try:
+                        print("\nAnswer: \n")
+                        llm_chain = StreamingChain(LLM, prompt)
+                        for token in llm_chain.stream(input_data=input_data):
+                            if active_streams.get(stream_id, {}).get('stop'):
+                                logging.info(f"Stopping stream {stream_id} due to user request.")
+                                break  # Exit the loop if stop signal is received
+                            yield token.encode("utf-8")
+                        print("\n\n")
+                    except Exception as e:
+                        logging.error(f"Error during streaming: {str(e)}")
+                        yield "Error occurred during streaming".encode("utf-8")
+                                
+        finally:
+            with stream_lock:
+                active_streams.pop(stream_id, None)
+                
+    response = Response(generate_stream(), mimetype="text/plain")
+    response.headers["Stream-ID"] = stream_id
+    logging.info(f">>> Generated response for stream ID: {stream_id}")
+    logging.info(">>> Exiting /api/prompt_route")
+    return response
 
-
-    return Response(generate_stream(), mimetype="text/plain")
 
 # Other routes remain unchanged
 @app.route("/api/delete_source", methods=["GET"])
@@ -148,6 +216,7 @@ def delete_source_route():
     os.makedirs(folder_name)
 
     return jsonify({"message": f"Folder '{folder_name}' successfully deleted and recreated."})
+
 
 @app.route("/api/save_document", methods=["GET", "POST"])
 def save_document_route():
@@ -164,6 +233,7 @@ def save_document_route():
         file_path = os.path.join(folder_path, filename)
         file.save(file_path)
         return "File saved successfully", 200
+    
 
 @app.route("/api/run_ingest", methods=["GET"])
 def run_ingest_route():
@@ -198,6 +268,9 @@ def run_ingest_route():
         return "Script executed successfully: {}".format(result.stdout.decode("utf-8")), 200
     except Exception as e:
         return f"Error occurred: {str(e)}", 500
+    
+        
+#  ---------- END OF API ROUTES ----------
 
 
 if __name__ == "__main__":

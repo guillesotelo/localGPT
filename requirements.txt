@@ -2,7 +2,6 @@
 langchain==0.2.16
 langsmith==0.1.112
 markdown-it-py==2.2.0
-pyyaml==5.1
 chromadb==0.4.6
 pdfminer.six==20221105
 InstructorEmbedding

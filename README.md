@@ -2,14 +2,27 @@
 
 ## Instalation & Testing with CPU
 
+Default values from constants.py are for GPU. Create an .env file with the values you want for CPU for example:
+
+```bash
+   CONTEXT_WINDOW_SIZE=2048
+   MAX_NEW_TOKENS=512
+   N_GPU_LAYERS=0
+   N_BATCH=128
+   EMBEDDING_MODEL_NAME=hkunlp/instructor-large
+```
+
+A successfull test was made with the following stack:
+
 - Model: TheBloke--Mistral-7B-Instruct-v0.2-GGUF (mistral-7b-instruct-v0.2.Q4_K_M.gguf)
 - Embeddings: "hkunlp/instructor-large"
 - huggingface_hub==0.23.2
-- If problems arise with llama-cc run:
+
+If problems arise with llamaCpp run:
 
 ```bash
    pip install --force-reinstall --no-cache-dir llama-cpp-python==0.2.58
-   ```
+```
 
 - Update model_path in load_model
 - Playing with adding parameter `n_ctx=2048``and other numbers on LlamaCpp()
@@ -20,14 +33,14 @@
 To run the API start with:
 
 ```bash
-conda activate localGPT
-python run_localGPT_API.py
+   conda activate localGPT
+   python run_localGPT_API.py
 ```
 
 For SSL related issues run this command and try running the API again:
 
 ```bash
-export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+   export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
 ```
 
 ### Fix broken dependencies
@@ -35,22 +48,22 @@ export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
 Run:
 
 ```bash
-pip install -r requirements.txt --force-reinstall
+   pip install -r requirements.txt --force-reinstall
 ```
 
 If still dependency errors arise:
 
 ```bash
-pip uninstall pyyaml markdown-it-py langchain langsmith
+   pip uninstall pyyaml markdown-it-py langchain langsmith
 ```
 
 and:
 
 ```bash
-pip install pyyaml==5.1
-pip install markdown-it-py==2.1.0  # Compatible with mdit-py-plugins and myst-parser
-pip install langchain==0.2.16
-pip install langsmith==0.1.112 # Or the ones to be fixed`
+   pip install pyyaml==5.1
+   pip install markdown-it-py==2.1.0  # Compatible with mdit-py-plugins and myst-parser
+   pip install langchain==0.2.16
+   pip install langsmith==0.1.112 # Or the ones to be fixed`
 ```
 
 Finally check: `pip check` to confirm dependencies ar ok.
@@ -58,7 +71,7 @@ Finally check: `pip check` to confirm dependencies ar ok.
 When all is working, freeze into requirements:
 
 ```bash
-pip freeze > requirements.txt
+   pip freeze > requirements.txt
 ```
 
 ## Installation on GPU
@@ -157,5 +170,5 @@ pip install -r requirements.txt
 For `NVIDIA` GPUs support, use `cuBLAS`
 
 ```shell
-CMAKE_ARGS="-DGGML_CUDA=on -DCUDA_PATH=/usr/local/cuda-12.5 -DCUDAToolkit_ROOT=/usr/local/cuda-12.5 -DCUDAToolkit_INCLUDE_DIR=/usr/local/cuda-12/include -DCUDAToolkit_LIBRARY_DIR=/usr/local/cuda-12.5/lib64" FORCE_CMAKE=1 pip install llama-cpp-python --no-cache-dir
+   CMAKE_ARGS="-DGGML_CUDA=on -DCUDA_PATH=/usr/local/cuda-12.5 -DCUDAToolkit_ROOT=/usr/local/cuda-12.5 -DCUDAToolkit_INCLUDE_DIR=/usr/local/cuda-12/include -DCUDAToolkit_LIBRARY_DIR=/usr/local/cuda-12.5/lib64" FORCE_CMAKE=1 pip install llama-cpp-python --no-cache-dir
 ```

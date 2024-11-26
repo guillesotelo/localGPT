@@ -31,10 +31,8 @@ contextualize_q_system_prompt = (
 
 def get_chat_prompt(prompt):
     return f"""
-            <s>[INST]
             {system_prompt}
             {prompt}
-            [/INST]
             """
 
 

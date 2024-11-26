@@ -11,16 +11,12 @@ from langchain.document_loaders import UnstructuredHTMLLoader
 
 # load_dotenv()
 ROOT_DIRECTORY = os.path.dirname(os.path.realpath(__file__))
-
-# Define the folder for storing database
 SOURCE_DIRECTORY = f"{ROOT_DIRECTORY}/SOURCE_DOCUMENTS"
-
 PERSIST_DIRECTORY = f"{ROOT_DIRECTORY}/DB"
-
 MODELS_PATH = "./models"
 
 # Can be changed to a specific number
-INGEST_THREADS = os.cpu_count() or 8
+INGEST_THREADS = int(os.getenv("INGEST_THREADS", os.cpu_count() or 8))
 
 # Define the Chroma settings
 CHROMA_SETTINGS = Settings(
@@ -30,19 +26,19 @@ CHROMA_SETTINGS = Settings(
 
 # Context Window and Max New Tokens
 # CONTEXT_WINDOW_SIZE = 8096 # Original recommended
-CONTEXT_WINDOW_SIZE = 2048 # Testing this for CPU
-MAX_NEW_TOKENS = 512  # int(CONTEXT_WINDOW_SIZE/4)
+CONTEXT_WINDOW_SIZE = int(os.getenv("CONTEXT_WINDOW_SIZE", 4096))
+MAX_NEW_TOKENS = int(os.getenv("MAX_NEW_TOKENS", 1024))
 
 #### If you get a "not enough space in the buffer" error, you should reduce the values below, start with half of the original values and keep halving the value until the error stops appearing
 
 # N_GPU_LAYERS = 100  # Llama-2-70B has 83 layers
-N_GPU_LAYERS = 0  # This should be 0 for CPU use
+# N_GPU_LAYERS = 0  # This should be 0 for CPU use
 # N_BATCH = 512 # Original recommended
-N_BATCH = 128 # Testing this for CPU
+# N_BATCH = 128 # Testing this for CPU
 
 ### From experimenting with the Llama-2-7B-Chat-GGML model on 8GB VRAM, these values work:
-# N_GPU_LAYERS = 20
-# N_BATCH = 512
+N_GPU_LAYERS = int(os.getenv("N_GPU_LAYERS", 20))
+N_BATCH = int(os.getenv("N_BATCH", 512))
 
 
 # https://python.langchain.com/en/latest/_modules/langchain/document_loaders/excel.html#UnstructuredExcelLoader
@@ -61,7 +57,7 @@ DOCUMENT_MAP = {
 }
 
 # Default Instructor Model
-EMBEDDING_MODEL_NAME = "hkunlp/instructor-large"  # Uses 1.5 GB of VRAM (High Accuracy with lower VRAM usage)
+EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "hkunlp/instructor-large") # Uses 1.5 GB of VRAM (High Accuracy with lower VRAM usage)
 
 ####
 #### OTHER EMBEDDING MODEL OPTIONS
@@ -129,8 +125,8 @@ EMBEDDING_MODEL_NAME = "hkunlp/instructor-large"  # Uses 1.5 GB of VRAM (High Ac
 # MODEL_ID = "TheBloke/Mistral-7B-Instruct-v0.1-GGUF"
 # MODEL_BASENAME = "mistral-7b-instruct-v0.1.Q8_0.gguf"
 
-MODEL_ID = "TheBloke/Mistral-7B-Instruct-v0.2-GGUF"
-MODEL_BASENAME = "mistral-7b-instruct-v0.2.Q4_K_M.gguf"
+MODEL_ID = os.getenv("MODEL_ID", "TheBloke/Mistral-7B-Instruct-v0.2-GGUF")
+MODEL_BASENAME =  os.getenv("MODEL_BASENAME", "mistral-7b-instruct-v0.2.Q4_K_M.gguf")
 
 # MODEL_ID = "TheBloke/Llama-2-70b-Chat-GGUF"
 # MODEL_BASENAME = "llama-2-70b-chat.Q4_K_M.gguf"

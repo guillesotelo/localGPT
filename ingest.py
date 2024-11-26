@@ -170,14 +170,14 @@ def main(device_type):
 
     embeddings = get_embeddings(device_type)
 
-    logging.info(f"Loaded embeddings from {EMBEDDING_MODEL_NAME}")
-
     db = Chroma.from_documents(
         texts,
         embeddings,
         persist_directory=PERSIST_DIRECTORY,
         client_settings=CHROMA_SETTINGS,
     )
+    
+    logging.info(f"Successfully loaded embeddings from {EMBEDDING_MODEL_NAME}")
 
 
 if __name__ == "__main__":

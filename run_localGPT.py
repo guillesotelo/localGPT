@@ -33,12 +33,13 @@ from constants import (
     MODEL_BASENAME,
     MAX_NEW_TOKENS,
     MODELS_PATH,
-    CHROMA_SETTINGS,    
+    CHROMA_SETTINGS,
+    N_BATCH
 )
 
 def load_model(device_type, model_id, model_basename=None, LOGGING=logging):
     LOGGING.info(f"############ Loading Model: {model_id}, on: {device_type}")
-    LOGGING.info("############ This action can take a few minutes!")
+    # LOGGING.info("############ This action can take a few minutes!")
 
     # Load model and tokenizer based on model_basename
     if model_basename:
@@ -51,7 +52,7 @@ def load_model(device_type, model_id, model_basename=None, LOGGING=logging):
     else:
         model_path, tokenizer = load_full_model(model_id, model_basename, device_type, LOGGING)
 
-    LOGGING.info(f"############ model_path: {model_path}, tokenizer: {tokenizer}")
+    # LOGGING.info(f"############ model_path: {model_path}, tokenizer: {tokenizer}")
 
     if not model_path:
         raise ValueError("Model path is not set or returned.") 
@@ -61,13 +62,14 @@ def load_model(device_type, model_id, model_basename=None, LOGGING=logging):
     except EnvironmentError:
         LOGGING.warning("generation_config.json not found. Using default generation configuration.")
         generation_config = GenerationConfig(
-            max_new_tokens=512,
-            temperature=0.1,
-            top_p=0.9,
+            max_new_tokens=MAX_NEW_TOKENS,
+            temperature=float(os.getenv("TEMPERATURE", 0.1)),
+            top_p=float(os.getenv("TOP_P", 0.95)),
             repetition_penalty=1.1,
+            top_k=40
         )
 
-    LOGGING.info(f"############ Final model_path: {model_path}")
+    # LOGGING.info(f"############ Final model_path: {model_path}")
 
     try:
         llm = LlamaCpp(
@@ -76,16 +78,21 @@ def load_model(device_type, model_id, model_basename=None, LOGGING=logging):
             temperature=generation_config.temperature,
             top_p=generation_config.top_p,
             repeat_penalty=generation_config.repetition_penalty,
+            top_k=generation_config.top_k,
             device=device_type,
-            n_ctx=2048,
+            n_ctx=4096,
+            n_batch=N_BATCH,
             callbacks=[StreamingStdOutCallbackHandler()],
-            streaming=True
+            streaming=True,
+            precision="fp16",
+            n_gpu_layers=-1, # transfers available computation layers onto the GPU
+            threads=16
         )
     except KeyError as e:
         LOGGING.error(f"############ KeyError in LlamaCpp initialization: {e}")
         raise ValueError(f"############ Failed to initialize model with model_path: {model_path}")
 
-    LOGGING.info("############ Local LLM Loaded")
+    LOGGING.info(f"############ Local LLM Loaded on {device_type}")
     return llm
 
 # This is the one that works

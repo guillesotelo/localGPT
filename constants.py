@@ -26,8 +26,8 @@ CHROMA_SETTINGS = Settings(
 
 # Context Window and Max New Tokens
 # CONTEXT_WINDOW_SIZE = 8096 # Original recommended
-CONTEXT_WINDOW_SIZE = int(os.getenv("CONTEXT_WINDOW_SIZE", 4096))
-MAX_NEW_TOKENS = int(os.getenv("MAX_NEW_TOKENS", 1024))
+CONTEXT_WINDOW_SIZE = int(os.getenv("CONTEXT_WINDOW_SIZE", 2048))
+MAX_NEW_TOKENS = int(os.getenv("MAX_NEW_TOKENS", 512))
 
 #### If you get a "not enough space in the buffer" error, you should reduce the values below, start with half of the original values and keep halving the value until the error stops appearing
 

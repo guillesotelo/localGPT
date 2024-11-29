@@ -1,5 +1,111 @@
 # Local LLM API
 
+## Server configuration
+
+### Apache routing
+
+This is how /etc/apache2/sites-enabled/chatbot.conf (or 000-default.conf) should look like:
+
+```bash
+<VirtualHost 10.55.101.133:80>
+    ServerName hpchatbot.server-name.net
+    ServerAlias hpchatbot.server-name.net
+    Redirect permanent / https://hpchatbot.server-name.net/
+</VirtualHost>
+
+<IfModule mod_ssl.c>
+    <VirtualHost 10.55.101.133:443>
+        ServerName hpchatbot.server-name.net
+        ServerAdmin guillermo.sotelo@server-name.com
+
+        # Enable Proxying
+        ProxyPreserveHost On
+        ProxyRequests Off
+
+        # Proxy API requests to Node.js API (Port 5000)
+        ProxyPass /api http://localhost:5000/api
+        ProxyPassReverse /api http://localhost:5000/api
+
+        # Proxy all other requests to React app (Port 3000)
+        ProxyPass / http://localhost:3000/
+        ProxyPassReverse / http://localhost:3000/
+
+        # Error and Access Logs
+        ErrorLog ${APACHE_LOG_DIR}/hpchatbot-error.log
+        CustomLog ${APACHE_LOG_DIR}/hpchatbot-access.log combined
+
+        # SSL Configuration
+        SSLEngine on
+        SSLCertificateFile /var/lib/hpchatbot/ssl/CAbundle2024.cer
+        SSLCertificateKeyFile /var/lib/hpchatbot/ssl/PrivateKey.key
+        SSLCertificateChainFile /var/lib/hpchatbot/ssl/CAbundle2024.cer
+        SSLCACertificatePath /etc/ssl/certs/
+
+        # Optional: Strict HTTPS Enforcement
+        <FilesMatch "\.(cgi|shtml|phtml|php)$">
+            SSLOptions +StdEnvVars
+        </FilesMatch>
+        <Directory /usr/lib/cgi-bin>
+            SSLOptions +StdEnvVars
+        </Directory>
+    </VirtualHost>
+</IfModule>
+```
+
+Then making sure http, proxy_http and ssl are enabled:
+
+```bash
+sudo a2enmod proxy proxy_http ssl
+sudo systemctl restart apache2
+```
+
+### Gunicorn
+
+We use Gunicorn for serving the API in a production-ready environment:
+
+- Create a systemd service file, e.g., /etc/systemd/system/gunicorn.service
+
+```bash
+[Unit]
+Description=Gunicorn instance to serve your API
+After=network.target
+
+[Service]
+User=your_user
+Group=your_group
+WorkingDirectory=/path/to/your/app
+ExecStart=/home/guillermo/anaconda3/envs/myenv/bin/gunicorn --bind 0.0.0.0:5000 run_api:app --workers 1 --threads 1 --timeout 240
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Make sure to update WorkingDirectory and ExactStart accordingly.
+Then:
+
+```bash
+sudo systemctl daemon-reload
+```
+
+```bash
+sudo systemctl start gunicorn
+```
+
+```bash
+sudo systemctl enable gunicorn
+```
+
+```bash
+sudo systemctl status gunicorn
+```
+
+View live logs using:
+
+```bash
+journalctl -u gunicorn.service -f
+```
+
 ## Instalation & Testing with CPU
 
 Default values from constants.py are for GPU. Create an .env file with the values you want for CPU for example:

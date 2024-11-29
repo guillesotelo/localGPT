@@ -32,6 +32,8 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(filename)s:%(lineno)s - %(message)s", level=logging.INFO
 )
 
+os.environ['CURL_CA_BUNDLE'] = ''
+
 # Determine device type
 if torch.backends.mps.is_available():
     DEVICE_TYPE = "mps"
@@ -269,13 +271,19 @@ def run_ingest_route():
     except Exception as e:
         return f"Error occurred: {str(e)}", 500
     
-        
+@app.route("/api/health", methods=["GET"])
+def check_api_health():
+    return "API Status: OK"
+            
 #  ---------- END OF API ROUTES ----------
 
 
-if __name__ == "__main__":
+# Only serving Flash for development. Produciton runs with gunicorn
+# gunicorn --bind 0.0.0.0:5000 run_api:app --workers 1 --threads 1 --timeout 240
+
+if os.getenv("DEVELOPMENT", False) and __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--port", type=int, default=5110, help="Port to run the API on. Defaults to 5110.")
+    parser.add_argument("--port", type=int, default=5000, help="Port to run the API on. Defaults to 5110.")
     parser.add_argument(
         "--host",
         type=str,

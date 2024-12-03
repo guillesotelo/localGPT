@@ -42,51 +42,54 @@ def load_model(device_type, model_id, model_basename=None, LOGGING=logging):
     # LOGGING.info("############ This action can take a few minutes!")
 
     # Load model and tokenizer based on model_basename
-    if model_basename:
-        if ".gguf" in model_basename.lower() or ".ggml" in model_basename.lower():
-            model_path, tokenizer = load_quantized_model_gguf_ggml(model_id, model_basename, device_type, LOGGING)
-        elif ".awq" in model_basename.lower():
-            model_path, tokenizer = load_quantized_model_awq(model_id, LOGGING)
-        else:
-            model_path, tokenizer = load_quantized_model_qptq(model_id, model_basename, device_type, LOGGING)
-    else:
-        model_path, tokenizer = load_full_model(model_id, model_basename, device_type, LOGGING)
+    # if model_basename:
+    #     if ".gguf" in model_basename.lower() or ".ggml" in model_basename.lower():
+    #         model_path, tokenizer = load_quantized_model_gguf_ggml(model_id, model_basename, device_type, LOGGING)
+    #     elif ".awq" in model_basename.lower():
+    #         model_path, tokenizer = load_quantized_model_awq(model_id, LOGGING)
+    #     else:
+    #         model_path, tokenizer = load_quantized_model_qptq(model_id, model_basename, device_type, LOGGING)
+    # else:
+    #     model_path, tokenizer = load_full_model(model_id, model_basename, device_type, LOGGING)
 
-    # LOGGING.info(f"############ model_path: {model_path}, tokenizer: {tokenizer}")
+    # # LOGGING.info(f"############ model_path: {model_path}, tokenizer: {tokenizer}")
 
-    if not model_path:
-        raise ValueError("Model path is not set or returned.") 
+    # if not model_path:
+    #     raise ValueError("Model path is not set or returned.") 
 
-    try:
-        generation_config = GenerationConfig.from_pretrained(model_id)
-    except EnvironmentError:
-        LOGGING.warning("generation_config.json not found. Using default generation configuration.")
-        generation_config = GenerationConfig(
-            max_new_tokens=MAX_NEW_TOKENS,
-            temperature=float(os.getenv("TEMPERATURE", 0.1)),
-            top_p=float(os.getenv("TOP_P", 0.95)),
-            repetition_penalty=1.1,
-            top_k=40
-        )
+    # try:
+    #     generation_config = GenerationConfig.from_pretrained(model_id)
+    # except EnvironmentError:
+    #     LOGGING.warning("generation_config.json not found. Using default generation configuration.")
+    #     generation_config = GenerationConfig(
+    #         max_new_tokens=MAX_NEW_TOKENS,
+    #         temperature=float(os.getenv("TEMPERATURE", 0.2)),
+    #         top_p=float(os.getenv("TOP_P", 0.95)),
+    #         repetition_penalty=1.1,
+    #     )
 
     # LOGGING.info(f"############ Final model_path: {model_path}")
 
     try:
         llm = LlamaCpp(
             model_path='./models/models--TheBloke--Mistral-7B-Instruct-v0.2-GGUF/snapshots/3a6fbf4a41a1d52e415a4958cde6856d34b2db93/mistral-7b-instruct-v0.2.Q4_K_M.gguf',
-            max_tokens=generation_config.max_new_tokens,
-            temperature=generation_config.temperature,
-            top_p=generation_config.top_p,
-            repeat_penalty=generation_config.repetition_penalty,
-            top_k=generation_config.top_k,
-            device=device_type,
-            n_ctx=4096,
-            n_batch=N_BATCH,
+            max_tokens=1024,
+            temperature=0.1,
+            n_ctx=2048,
+            n_batch=256,  # Adjust based on T4 memory; 16 is a good start
             callbacks=[StreamingStdOutCallbackHandler()],
             streaming=True,
-            precision="fp16",
-            n_gpu_layers=-1, # transfers available computation layers onto the GPU
-            threads=16
+            repeat_penalty= 1.1,
+            n_gpu_layers= -1,  # T4 typically handles around 40-45 layers well
+            top_p= 0.9,
+            top_k= 10000,
+            model_kwargs= {
+                'precision': "fp16",  # Use FP16 for optimal GPU performance
+                'device': 'cuda',
+                'threads': 4, # Number of CPU cores (4 on Ubuntu Server with TeslaT4)
+                'tfs_z': 1.0,
+                'offload_kqv': True,
+            }
         )
     except KeyError as e:
         LOGGING.error(f"############ KeyError in LlamaCpp initialization: {e}")

@@ -7,6 +7,8 @@ import subprocess
 import argparse
 import time
 from flask_cors import CORS
+from dotenv import load_dotenv
+load_dotenv()
 
 import torch
 from flask import Flask, jsonify, request, Response
@@ -29,7 +31,7 @@ import ssl
 ssl._create_default_https_context = ssl._create_unverified_context
 
 logging.basicConfig(
-    format="%(asctime)s - %(levelname)s - %(filename)s:%(lineno)s - %(message)s", level=logging.INFO
+    format="%(asctime)s - %(levelname)s - %(filename)s:%(lineno)s - %(message)s", level=logging.DEBUG
 )
 
 os.environ['CURL_CA_BUNDLE'] = ''
@@ -68,11 +70,11 @@ retriever = DB.as_retriever()
 
 # Load the model with streaming support
 LLM = load_model(device_type=DEVICE_TYPE, model_id=MODEL_ID, model_basename=MODEL_BASENAME)
+logging.info("LLM loaded.")
 
 
 app = Flask(__name__)
 CORS(app, expose_headers=["Stream-ID"])
-
 
 #  ---------- API ROUTES ----------
 
@@ -282,6 +284,7 @@ def check_api_health():
 # gunicorn --bind 0.0.0.0:5000 run_api:app --workers 1 --threads 1 --timeout 240
 
 if os.getenv("DEVELOPMENT", False) and __name__ == "__main__":
+    print("@@@@@@@@@@@@ RUNNING FLASK APP @@@@@@@@@@@@")
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=5000, help="Port to run the API on. Defaults to 5110.")
     parser.add_argument(

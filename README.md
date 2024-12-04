@@ -302,5 +302,5 @@ For `NVIDIA` GPUs support, use `cuBLAS`
 Option 2 (this one worked with cuda 12.5):
 
 ```shell
-   CMAKE_ARGS="-DGGML_CUDA=on -DLLAVA_BUILD=off" pip install -U llama-cpp-python --force-reinstall --no-cache-di
+   CMAKE_ARGS="-DGGML_CUDA=on -DLLAVA_BUILD=off" pip install -U llama-cpp-python --force-reinstall --no-cache-dir
 ```

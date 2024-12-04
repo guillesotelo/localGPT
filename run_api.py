@@ -281,7 +281,7 @@ def check_api_health():
 
 
 # Only serving Flash for development. Produciton runs with gunicorn
-# gunicorn --bind 0.0.0.0:5000 run_api:app --workers 1 --threads 1 --timeout 240
+# gunicorn --bind 0.0.0.0:5000 run_api:app --workers 1 --threads 1 --timeout 300
 
 if os.getenv("DEVELOPMENT", False) and __name__ == "__main__":
     print("@@@@@@@@@@@@ RUNNING FLASK APP @@@@@@@@@@@@")

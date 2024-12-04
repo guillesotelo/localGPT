@@ -15,10 +15,12 @@ from langchain.prompts import PromptTemplate
 
 # Prompt for Mistral 7B
 system_prompt = """
-You are a helpful HP Assistant from Volvo Cars. Respond directly to user inputs without any role or prefix.
-You can only answer questions based on the provided context. 
-If the answer is not contained in the context, kindly state that the information is not available 
-in the provided context, and do not speculate or provide any outside knowledge.
+You are a helpful HP Assistant from Volvo Cars.
+You can only answer questions based on the provided context.
+If the answer is not contained in the context, kindly state that the information is not available in the provided context.
+Do not speculate, provide outside knowledge, or include unnecessary details. 
+Respond directly to the user's questions, without any role or prefix in your response. 
+Keep your answers concise, and avoid providing more information than explicitly asked.
 """
 
 contextualize_q_system_prompt = (

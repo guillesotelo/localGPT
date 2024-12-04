@@ -241,6 +241,26 @@ Then opening new bash window or after running `bash`:
    nvcc --version # Should return Nvidia compiler information
 ```
 
+#### Usefull commands
+
+List cuda packages:
+
+```bash
+   pip list | grep cuda
+```
+
+List cuda versions:
+
+```bash
+   sudo update-alternatives --display cuda
+```
+
+Select cuda version:
+
+```bash
+   sudo update-alternatives --config cuda
+```
+
 ### API Installation
 
 - Download and install Conda
@@ -277,4 +297,10 @@ For `NVIDIA` GPUs support, use `cuBLAS`
 
 ```shell
    CMAKE_ARGS="-DGGML_CUDA=on -DCUDA_PATH=/usr/local/cuda-12.5 -DCUDAToolkit_ROOT=/usr/local/cuda-12.5 -DCUDAToolkit_INCLUDE_DIR=/usr/local/cuda-12/include -DCUDAToolkit_LIBRARY_DIR=/usr/local/cuda-12.5/lib64" FORCE_CMAKE=1 pip install llama-cpp-python --no-cache-dir
+```
+
+Option 2 (this one worked with cuda 12.5):
+
+```shell
+   CMAKE_ARGS="-DGGML_CUDA=on -DLLAVA_BUILD=off" pip install -U llama-cpp-python --force-reinstall --no-cache-di
 ```

@@ -83,10 +83,12 @@ def load_model(device_type, model_id, model_basename=None, LOGGING=logging):
             n_gpu_layers= -1,  # T4 typically handles around 40-45 layers well
             top_p= 0.9,
             top_k= 10000,
+            verbose=True,
+            device='cuda',
             model_kwargs= {
                 'precision': "fp16",  # Use FP16 for optimal GPU performance
-                'device': 'cuda',
-                'threads': 4, # Number of CPU cores (4 on Ubuntu Server with TeslaT4)
+                # 'device': 'cuda',
+                # 'threads': 4, # Number of CPU cores (4 on Ubuntu Server with TeslaT4)
                 'tfs_z': 1.0,
                 'offload_kqv': True,
             }
@@ -96,6 +98,7 @@ def load_model(device_type, model_id, model_basename=None, LOGGING=logging):
         raise ValueError(f"############ Failed to initialize model with model_path: {model_path}")
 
     LOGGING.info(f"############ Local LLM Loaded on {device_type}")
+    
     return llm
 
 # This is the one that works

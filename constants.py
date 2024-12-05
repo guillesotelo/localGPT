@@ -1,23 +1,17 @@
 import os
-
-# from dotenv import load_dotenv
 from chromadb.config import Settings
-
-# https://python.langchain.com/en/latest/modules/indexes/document_loaders/examples/excel.html?highlight=xlsx#microsoft-excel
-from langchain.document_loaders import CSVLoader, PDFMinerLoader, TextLoader, UnstructuredExcelLoader, Docx2txtLoader
-from langchain.document_loaders import UnstructuredFileLoader, UnstructuredMarkdownLoader
-from langchain.document_loaders import UnstructuredHTMLLoader
+from dotenv import load_dotenv
+load_dotenv()
+from langchain_community.document_loaders import CSVLoader, PDFMinerLoader, TextLoader, UnstructuredExcelLoader, Docx2txtLoader, UnstructuredFileLoader, UnstructuredMarkdownLoader, UnstructuredHTMLLoader
 
 
-# load_dotenv()
 ROOT_DIRECTORY = os.path.dirname(os.path.realpath(__file__))
 # SOURCE_DIRECTORY = f"{ROOT_DIRECTORY}/SOURCE_DOCUMENTS"
-SOURCE_DIRECTORY = "/var/lib/hpchatbot/latest"
+SOURCE_DIRECTORY = os.getenv("SOURCE_DIRECTORY", "/var/lib/hpchatbot/latest")
 PERSIST_DIRECTORY = f"{ROOT_DIRECTORY}/DB"
 MODELS_PATH = "./models"
+MODEL_PATH = "./models/models--TheBloke--Mistral-7B-Instruct-v0.2-GGUF/snapshots/3a6fbf4a41a1d52e415a4958cde6856d34b2db93/mistral-7b-instruct-v0.2.Q4_K_M.gguf"
 
-# Can be changed to a specific number
-INGEST_THREADS = int(os.getenv("INGEST_THREADS", os.cpu_count() or 8))
 
 # Define the Chroma settings
 CHROMA_SETTINGS = Settings(
@@ -25,21 +19,15 @@ CHROMA_SETTINGS = Settings(
     is_persistent=True,
 )
 
-# Context Window and Max New Tokens
-# CONTEXT_WINDOW_SIZE = 8096 # Original recommended
-CONTEXT_WINDOW_SIZE = int(os.getenv("CONTEXT_WINDOW_SIZE", 2048))
-MAX_NEW_TOKENS = int(os.getenv("MAX_NEW_TOKENS", 512))
-
-#### If you get a "not enough space in the buffer" error, you should reduce the values below, start with half of the original values and keep halving the value until the error stops appearing
-
-# N_GPU_LAYERS = 100  # Llama-2-70B has 83 layers
-# N_GPU_LAYERS = 0  # This should be 0 for CPU use
-# N_BATCH = 512 # Original recommended
-# N_BATCH = 128 # Testing this for CPU
-
-### From experimenting with the Llama-2-7B-Chat-GGML model on 8GB VRAM, these values work:
-N_GPU_LAYERS = int(os.getenv("N_GPU_LAYERS", 20))
-N_BATCH = int(os.getenv("N_BATCH", 512))
+INGEST_THREADS = int(os.getenv("INGEST_THREADS", os.cpu_count() or 8))
+CONTEXT_WINDOW_SIZE = int(os.getenv("CONTEXT_WINDOW_SIZE", 4096))
+MAX_NEW_TOKENS = int(os.getenv("MAX_NEW_TOKENS", 1024))
+TEMPERATURE=float(os.getenv("TEMPERATURE", 0.1))
+R_PENALTY=float(os.getenv("R_PENALTY", 1.1))
+N_GPU_LAYERS = int(os.getenv("N_GPU_LAYERS", -1)) # This should be 0 for CPU use
+N_BATCH = int(os.getenv("N_BATCH", 256))
+TOP_P = float(os.getenv("TOP_P", 0.9))
+TOP_K = int(os.getenv("TOP_K", 10))
 
 
 # https://python.langchain.com/en/latest/_modules/langchain/document_loaders/excel.html#UnstructuredExcelLoader

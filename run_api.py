@@ -17,7 +17,7 @@ from langchain.chains.retrieval import create_retrieval_chain
 from langchain_community.embeddings import HuggingFaceInstructEmbeddings
 from run_localGPT import load_model
 from prompt_template_utils import get_prompt_template, system_prompt, contextualize_q_system_prompt
-from langchain.vectorstores import Chroma
+from langchain_community.vectorstores import Chroma
 from werkzeug.utils import secure_filename
 from streaming_chain import StreamingChain
 from langchain.chains.combine_documents import create_stuff_documents_chain
@@ -126,7 +126,7 @@ def prompt_route():
                 
                 # Use documents context
                 if use_context:
-                    print(f"\n\n* * * Using chat with CONTEXT * * *\n")
+                    print(f"\n\n*** Using chat with CONTEXT ***\n")
                     ctx_system_prompt = f"""
                         {system_prompt}
                             \n\n
@@ -178,7 +178,7 @@ def prompt_route():
                     
                 # Chat with LLM only
                 else:
-                    print(f"\n\n* * * Using direct chat with LLM * * *\n")
+                    print(f"\n\n*** Using direct chat with LLM ***\n")
                     input_data = {
                         "context": None,
                         "question": user_prompt,

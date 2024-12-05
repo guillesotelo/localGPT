@@ -11,9 +11,11 @@ from queue import Queue
 from langchain.llms import LlamaCpp
 from prompt_template_utils import get_prompt_template
 from utils import get_embeddings
+from dotenv import load_dotenv
+load_dotenv()
 
 # from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
-from langchain.vectorstores import Chroma
+from langchain_community.vectorstores import Chroma
 from transformers import (
     GenerationConfig,
     pipeline,
@@ -31,14 +33,21 @@ from constants import (
     PERSIST_DIRECTORY,
     MODEL_ID,
     MODEL_BASENAME,
+    MODEL_PATH,
     MAX_NEW_TOKENS,
     MODELS_PATH,
     CHROMA_SETTINGS,
-    N_BATCH
+    N_BATCH,
+    CONTEXT_WINDOW_SIZE,
+    TEMPERATURE,
+    R_PENALTY,
+    N_GPU_LAYERS,
+    TOP_P,
+    TOP_K
 )
 
 def load_model(device_type, model_id, model_basename=None, LOGGING=logging):
-    LOGGING.info(f"############ Loading Model: {model_id}, on: {device_type}")
+    LOGGING.info(f"Loading Model: {model_id}, on: {device_type}...")
     # LOGGING.info("############ This action can take a few minutes!")
 
     # Load model and tokenizer based on model_basename
@@ -69,35 +78,35 @@ def load_model(device_type, model_id, model_basename=None, LOGGING=logging):
     #     )
 
     # LOGGING.info(f"############ Final model_path: {model_path}")
+    
+    model_kwargs = {
+        'precision': "fp16",
+        'tfs_z': 1.0,
+        'offload_kqv': True
+    } if device_type == 'cuda' else {}
 
     try:
         llm = LlamaCpp(
-            model_path='./models/models--TheBloke--Mistral-7B-Instruct-v0.2-GGUF/snapshots/3a6fbf4a41a1d52e415a4958cde6856d34b2db93/mistral-7b-instruct-v0.2.Q4_K_M.gguf',
-            max_tokens=1024,
-            temperature=0.1,
-            n_ctx=2048,
-            n_batch=256,  # Adjust based on T4 memory; 16 is a good start
+            model_path=MODEL_PATH,
+            max_tokens=MAX_NEW_TOKENS,
+            temperature=TEMPERATURE,
+            n_ctx=CONTEXT_WINDOW_SIZE,
+            n_batch=N_BATCH,
             callbacks=[StreamingStdOutCallbackHandler()],
             streaming=True,
-            repeat_penalty= 1.1,
-            n_gpu_layers= -1,  # T4 typically handles around 40-45 layers well
-            top_p= 0.9,
-            top_k= 10000,
+            repeat_penalty=R_PENALTY,
+            n_gpu_layers=N_GPU_LAYERS,
+            top_p=TOP_P,
+            top_k=TOP_K,
             verbose=True,
-            device='cuda',
-            model_kwargs= {
-                'precision': "fp16",  # Use FP16 for optimal GPU performance
-                # 'device': 'cuda',
-                # 'threads': 4, # Number of CPU cores (4 on Ubuntu Server with TeslaT4)
-                'tfs_z': 1.0,
-                'offload_kqv': True,
-            }
+            device=device_type,
+            model_kwargs=model_kwargs
         )
     except KeyError as e:
-        LOGGING.error(f"############ KeyError in LlamaCpp initialization: {e}")
-        raise ValueError(f"############ Failed to initialize model with model_path: {model_path}")
+        LOGGING.error(f"KeyError in LlamaCpp initialization: {e}")
+        raise ValueError(f"Failed to initialize model with model_path: {MODEL_PATH}")
 
-    LOGGING.info(f"############ Local LLM Loaded on {device_type}")
+    LOGGING.info(f"*** Local LLM successfully loaded on {device_type} ***")
     
     return llm
 

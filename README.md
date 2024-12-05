@@ -106,6 +106,79 @@ View live logs using:
 journalctl -u gunicorn.service -f
 ```
 
+#### Ingest automation
+
+- Create a Shell Script: Create a script that stops the service, runs the process, and restarts the service.
+
+```bash
+#!/bin/bash
+
+# Stop the Gunicorn service
+systemctl stop gunicorn.service
+
+# Navigate to the working directory
+cd /chatbot/source/api || exit
+
+# Delete the 'DB' folder if it exists
+if [ -d "DB" ]; then
+    rm -rf DB
+    echo "DB folder deleted."
+else
+    echo "DB folder does not exist. Skipping deletion."
+fi
+
+# Run the ingestion script
+/home/local/VCCNET/gsotelo/anaconda3/envs/localGPT/bin/python ingest.py
+
+# Start the Gunicorn service
+systemctl start gunicorn.service
+```
+
+- Save this script as /chatbot/source/api/ingest-automation.sh and make it executable:
+
+```bash
+chmod +x /chatbot/source/api/ingest-automation.sh
+```
+
+- Create a systemd Timer: Create two files: one for the service to run the script and another for the timer.
+
+```bash
+# Service file: /etc/systemd/system/ingest-automation.service
+[Unit]
+Description=Run ingest-automation tasks for Gunicorn
+
+[Service]
+Type=oneshot
+ExecStart=/chatbot/source/api/ingest-automation.sh
+```
+
+```bash
+# Timer file: /etc/systemd/system/ingest-automation.timer
+[Unit]
+Description=Run ingest-automation tasks daily at 6 AM
+
+[Timer]
+OnCalendar=*-*-* 06:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+- Enable and Start the Timer: Reload systemd and enable the timer.
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable ingest-automation.timer
+sudo systemctl start ingest-automation.timer
+```
+
+- Verify the Timer: Check the timer status to confirm it’s active:
+  
+```bash
+sudo systemctl list-timers --all
+```
+
 ## Instalation & Testing with CPU
 
 Default values from constants.py are for GPU. Create an .env file with the values you want for CPU for example:

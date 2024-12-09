@@ -222,6 +222,12 @@ For SSL related issues run this command and try running the API again:
    export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
 ```
 
+If that doesn't work, try with empty path instead:
+
+```bash
+   export REQUESTS_CA_BUNDLE=
+```
+
 ### Fix broken dependencies
 
 Run:

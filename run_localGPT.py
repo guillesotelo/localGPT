@@ -46,6 +46,16 @@ from constants import (
     TOP_K
 )
 
+import requests
+from huggingface_hub import configure_http_backend
+
+def backend_factory() -> requests.Session:
+    session = requests.Session()
+    session.verify = False
+    return session
+
+configure_http_backend(backend_factory=backend_factory)
+
 def load_model(device_type, model_id, model_basename=None, LOGGING=logging):
     LOGGING.info(f"Loading Model: {model_id}, on: {device_type}...")
     # LOGGING.info("############ This action can take a few minutes!")
@@ -296,7 +306,7 @@ def retrieval_qa_pipline(device_type, use_history, promptTemplate_type="llama"):
             chain_type="stuff",  # try other chains types as well. refine, map_reduce, map_rerank
             retriever=retriever,
             return_source_documents=True,  # verbose=True,
-            callbacks=callback_manager,
+            # callbacks=callback_manager,
             chain_type_kwargs={"prompt": prompt, "memory": memory},
         )
     else:
@@ -305,7 +315,7 @@ def retrieval_qa_pipline(device_type, use_history, promptTemplate_type="llama"):
             chain_type="stuff",  # try other chains types as well. refine, map_reduce, map_rerank
             retriever=retriever,
             return_source_documents=True,  # verbose=True,
-            callbacks=callback_manager,
+            # callbacks=callback_manager,
             chain_type_kwargs={
                 "prompt": prompt,
             },

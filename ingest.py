@@ -49,7 +49,7 @@ def load_single_document(file_path: str) -> Document:
 
 
 def load_document_batch(filepaths):
-    logging.info("Loading document batch")
+    logging.info("Loading document batch...")
     # create a thread pool
     with ThreadPoolExecutor(len(filepaths)) as exe:
         # load files
@@ -149,7 +149,7 @@ def split_documents(documents: list[Document]) -> tuple[list[Document], list[Doc
 )
 def main(device_type):
     # Load documents and split in chunks
-    logging.info(f"Loading documents from {SOURCE_DIRECTORY}")
+    logging.info(f"Loading documents from {SOURCE_DIRECTORY}...")
     documents = load_documents(SOURCE_DIRECTORY)
     text_documents, python_documents = split_documents(documents)
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
@@ -162,7 +162,7 @@ def main(device_type):
     logging.info(f"Split into {len(texts)} chunks of text")
 
     """
-    (1) Chooses an appropriate langchain library based on the enbedding model name.  Matching code is contained within fun_localGPT.py.
+    (1) Chooses an appropriate langchain library based on the enbedding model name.  Matching code is contained within run_localGPT.py.
     
     (2) Provides additional arguments for instructor and BGE models to improve results, pursuant to the instructions contained on
     their respective huggingface repository, project page or github repository.
@@ -177,7 +177,7 @@ def main(device_type):
         client_settings=CHROMA_SETTINGS,
     )
     
-    logging.info(f"Successfully loaded embeddings from {EMBEDDING_MODEL_NAME}")
+    logging.info(f"*** Successfully loaded embeddings from {EMBEDDING_MODEL_NAME} ***")
 
 
 if __name__ == "__main__":

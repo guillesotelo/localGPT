@@ -17,7 +17,7 @@ from langchain.prompts import PromptTemplate
 system_prompt = """
 You are a helpful HP Assistant from Volvo Cars.
 You can only answer questions based on the provided context.
-If the answer is not contained in the context, kindly state that the information is not available in the provided context.
+If the answer is not contained in the context, kindly state that the information is not available in the provided context and end the response.
 Do not speculate, provide outside knowledge, or include unnecessary details. 
 Respond directly to the user's questions, without any role or prefix in your response. 
 Keep your answers concise, and avoid providing more information than explicitly asked.
@@ -46,17 +46,17 @@ def get_prompt_template(system_prompt=system_prompt, promptTemplate_type=None, h
         if history:
             instruction = """
             Context: {history} \n {context}
-            User: {question}"""
+            User: {input}"""
 
             prompt_template = B_INST + SYSTEM_PROMPT + instruction + E_INST
-            prompt = PromptTemplate(input_variables=["history", "context", "question"], template=prompt_template)
+            prompt = PromptTemplate(input_variables=["history", "context", "input"], template=prompt_template)
         else:
             instruction = """
             Context: {context}
-            User: {question}"""
+            User: {input}"""
 
             prompt_template = B_INST + SYSTEM_PROMPT + instruction + E_INST
-            prompt = PromptTemplate(input_variables=["context", "question"], template=prompt_template)
+            prompt = PromptTemplate(input_variables=["context", "input"], template=prompt_template)
 
     elif promptTemplate_type == "llama3":
 

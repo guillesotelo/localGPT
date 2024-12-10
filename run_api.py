@@ -8,7 +8,6 @@ import argparse
 import time
 from flask_cors import CORS
 from dotenv import load_dotenv
-import atexit
 
 load_dotenv()
 
@@ -279,10 +278,7 @@ def run_ingest_route():
 def check_api_health():
     return "API Status: OK"
 
-@atexit.register
-def free_model():
-    LLM.close()
-    
+
 #  ---------- END OF API ROUTES ----------
 
 

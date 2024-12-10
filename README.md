@@ -73,7 +73,7 @@ After=network.target
 [Service]
 User=gsotelo
 Group=domain_users
-ExecStart=/etc/systemd/system/run_chatbot_api.sh
+ExecStart=/bin/bash -c "su - gsotelo -c '/home/local/VCCNET/gsotelo/anaconda3/envs/localGPT/bin/python /chatbot/source/api/run_api.py'"
 Restart=always
 Environment="/sbin:/bin:/usr/sbin:/usr/bin:/home/local/VCCNET/gsotelo/anaconda3/envs/localGPT/bin:/home/local/VCCNET/gsotelo/anaconda3/condabin"
 StandardOutput=journal

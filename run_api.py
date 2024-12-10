@@ -8,6 +8,7 @@ import argparse
 import time
 from flask_cors import CORS
 from dotenv import load_dotenv
+import atexit
 
 load_dotenv()
 
@@ -56,7 +57,10 @@ stream_lock = Lock()
 # Active requests
 active_streams = {}
 
+torch.cuda.empty_cache()
+import gc
 
+gc.collect()
 # Load embeddings Model
 EMBEDDINGS = HuggingFaceInstructEmbeddings(model_name=EMBEDDING_MODEL_NAME, model_kwargs={"device": DEVICE_TYPE})
 
@@ -129,7 +133,6 @@ def prompt_route():
                         {system_prompt}
                         \n\n
                         {{context}}
-                        {user_prompt}
                         """
                     if use_history:
                         contextualize_q_prompt = ChatPromptTemplate.from_messages(
@@ -166,7 +169,8 @@ def prompt_route():
                                 ("human", "{input}"),
                             ]
                         )
-                        question_answer_chain = create_stuff_documents_chain(LLM, ctx_system_prompt)
+
+                        question_answer_chain = create_stuff_documents_chain(LLM, prompt)
                         rag_chain = create_retrieval_chain(retriever, question_answer_chain)
 
                         chain = rag_chain.pick("answer")
@@ -275,7 +279,10 @@ def run_ingest_route():
 def check_api_health():
     return "API Status: OK"
 
-
+@atexit.register
+def free_model():
+    LLM.close()
+    
 #  ---------- END OF API ROUTES ----------
 
 

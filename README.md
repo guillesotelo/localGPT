@@ -63,23 +63,36 @@ sudo systemctl restart apache2
 
 We use Gunicorn for serving the API in a production-ready environment:
 
-- Create a systemd service file, e.g., /etc/systemd/system/gunicorn.service
+- Create a systemd service file, e.g., `sudo nano /etc/systemd/system/gunicorn.service`:
 
 ```bash
 [Unit]
-Description=Gunicorn instance to serve your API
+Description=Gunicorn instance to serve chatbot API
 After=network.target
 
 [Service]
-User=your_user
-Group=your_group
-WorkingDirectory=/path/to/your/app
-ExecStart=/home/guillermo/anaconda3/envs/myenv/bin/gunicorn --bind 0.0.0.0:5000 run_api:app --workers 1 --threads 1 --timeout 240
+User=gsotelo
+Group=domain_users
+ExecStart=/etc/systemd/system/run_chatbot_api.sh
 Restart=always
+Environment="/sbin:/bin:/usr/sbin:/usr/bin:/home/local/VCCNET/gsotelo/anaconda3/envs/localGPT/bin:/home/local/VCCNET/gsotelo/anaconda3/condabin"
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
 ```
+
+And a bash script `sudo nano /etc/systemd/system/run_chatbot_api.sh`:
+
+```bash
+#!/bin/bash
+source ~/anaconda3/bin/activate localGPT
+cd /chatbot/source/api
+python run_api.py
+```
+
+And make it executable with `sudo chmod +x /etc/systemd/system/run_chatbot_api.sh`
 
 Make sure to update WorkingDirectory and ExactStart accordingly.
 Then:

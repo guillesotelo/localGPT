@@ -67,17 +67,17 @@ def get_prompt_template(system_prompt=system_prompt, promptTemplate_type=None, h
         if history:
             instruction = """
             Context: {history} \n {context}
-            User: {question}"""
+            User: {input}"""
 
             prompt_template = SYSTEM_PROMPT + B_INST + instruction + ASSISTANT_INST
-            prompt = PromptTemplate(input_variables=["history", "context", "question"], template=prompt_template)
+            prompt = PromptTemplate(input_variables=["history", "context", "input"], template=prompt_template)
         else:
             instruction = """
             Context: {context}
-            User: {question}"""
+            User: {input}"""
 
             prompt_template = SYSTEM_PROMPT + B_INST + instruction + ASSISTANT_INST
-            prompt = PromptTemplate(input_variables=["context", "question"], template=prompt_template)
+            prompt = PromptTemplate(input_variables=["context", "input"], template=prompt_template)
 
     elif promptTemplate_type == "mistral":
         B_INST, E_INST = "<s>[INST] ", " [/INST]"
@@ -88,10 +88,10 @@ def get_prompt_template(system_prompt=system_prompt, promptTemplate_type=None, h
                 + """
     
             Context: {history} \n {context}
-            User: {question}"""
+            User: {input}"""
                 + E_INST
             )
-            prompt = PromptTemplate(input_variables=["history", "context", "question"], template=prompt_template)
+            prompt = PromptTemplate(input_variables=["history", "context", "input"], template=prompt_template)
         else:
             if use_context:    
                 prompt_template = (
@@ -100,10 +100,10 @@ def get_prompt_template(system_prompt=system_prompt, promptTemplate_type=None, h
                     + """
                 
                 Context: {context}
-                User: {question}"""
+                User: {input}"""
                     + E_INST
                 )
-                prompt = PromptTemplate(input_variables=["context", "question"], template=prompt_template)
+                prompt = PromptTemplate(input_variables=["context", "input"], template=prompt_template)
             else:
                 prompt_template = (
                     B_INST
@@ -111,10 +111,10 @@ def get_prompt_template(system_prompt=system_prompt, promptTemplate_type=None, h
                     + """
                 
                 Context: {context}
-                User: {question}"""
+                User: {input}"""
                     + E_INST
                 )
-                prompt = PromptTemplate(input_variables=["context", "question"], template=prompt_template)
+                prompt = PromptTemplate(input_variables=["context", "input"], template=prompt_template)
                 # prompt = get_chat_prompt(user_prompt)
     else:
         # change this based on the model you have selected.
@@ -124,22 +124,22 @@ def get_prompt_template(system_prompt=system_prompt, promptTemplate_type=None, h
                 + """
     
             Context: {history} \n {context}
-            User: {question}
+            User: {input}
             Answer:"""
             )
-            prompt = PromptTemplate(input_variables=["history", "context", "question"], template=prompt_template)
+            prompt = PromptTemplate(input_variables=["history", "context", "input"], template=prompt_template)
         else:
             prompt_template = (
                 system_prompt
                 + """
             
             Context: {context}
-            User: {question}
+            User: {input}
             Answer:"""
             )
-            prompt = PromptTemplate(input_variables=["context", "question"], template=prompt_template)
+            prompt = PromptTemplate(input_variables=["context", "input"], template=prompt_template)
 
-    memory = ConversationBufferMemory(input_key="question", memory_key="history")
+    memory = ConversationBufferMemory(input_key="input", memory_key="history")
 
     print(f"\n\nHere is the prompt used: {prompt}\n\n")
 

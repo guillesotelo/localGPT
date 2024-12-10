@@ -1,6 +1,7 @@
 import logging
 import os
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+import shutil
 
 import click
 import torch
@@ -19,10 +20,12 @@ from constants import (
 )
 
 import nltk
-nltk.download('punkt_tab')
-nltk.download('averaged_perceptron_tagger_eng')
 
-os.environ['CURL_CA_BUNDLE'] = ''
+nltk.download("punkt_tab")
+nltk.download("averaged_perceptron_tagger_eng")
+
+os.environ["CURL_CA_BUNDLE"] = ""
+
 
 def file_log(logentry):
     file1 = open("file_ingest.log", "a")
@@ -148,6 +151,11 @@ def split_documents(documents: list[Document]) -> tuple[list[Document], list[Doc
     help="Device to run on. (Default is cuda)",
 )
 def main(device_type):
+    
+    # Delete DB folder
+    shutil.rmtree(PERSIST_DIRECTORY, ignore_errors=True)
+    logging.info(f"Deleted folder: {PERSIST_DIRECTORY}")
+    
     # Load documents and split in chunks
     logging.info(f"Loading documents from {SOURCE_DIRECTORY}...")
     documents = load_documents(SOURCE_DIRECTORY)
@@ -176,12 +184,18 @@ def main(device_type):
         persist_directory=PERSIST_DIRECTORY,
         client_settings=CHROMA_SETTINGS,
     )
-    
+
     logging.info(f"*** Successfully loaded embeddings from {EMBEDDING_MODEL_NAME} ***")
 
 
 if __name__ == "__main__":
     logging.basicConfig(
-        format="%(asctime)s - %(levelname)s - %(filename)s:%(lineno)s - %(message)s", level=logging.INFO
+        format="%(asctime)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s",
+        level=logging.DEBUG,  # Set to DEBUG for very verbose logging
+        handlers=[
+            logging.StreamHandler(),  # Log to console
+            logging.FileHandler("debug.log", mode="w"),  # Log to file
+        ],
     )
+
     main()

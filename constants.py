@@ -10,9 +10,9 @@ ROOT_DIRECTORY = os.path.dirname(os.path.realpath(__file__))
 SOURCE_DIRECTORY = os.getenv("SOURCE_DIRECTORY", "/var/lib/hpchatbot/latest")
 PERSIST_DIRECTORY = f"{ROOT_DIRECTORY}/DB"
 MODELS_PATH = "./models"
-# MODEL_PATH = "./models/models--TheBloke--Mistral-7B-Instruct-v0.2-GGUF/snapshots/3a6fbf4a41a1d52e415a4958cde6856d34b2db93/mistral-7b-instruct-v0.2.Q4_K_M.gguf"
-MODEL_PATH= "./models/models--TheBloke--Llama-2-13B-GGUF/snapshots/b106d1c018ac999af9130b83134fb6b7c5331dea/llama-2-13b.Q5_K_M.gguf"
-MODEL_NAME='llama3'
+MODEL_PATH = "./models/models--TheBloke--Mistral-7B-Instruct-v0.2-GGUF/snapshots/3a6fbf4a41a1d52e415a4958cde6856d34b2db93/mistral-7b-instruct-v0.2.Q4_K_M.gguf"
+# MODEL_PATH= "./models/models--TheBloke--Llama-2-13B-GGUF/snapshots/b106d1c018ac999af9130b83134fb6b7c5331dea/llama-2-13b.Q5_K_M.gguf"
+MODEL_NAME='mistral'
 
 # Define the Chroma settings
 CHROMA_SETTINGS = Settings(
@@ -28,7 +28,7 @@ R_PENALTY=float(os.getenv("R_PENALTY", 1.1))
 N_GPU_LAYERS = int(os.getenv("N_GPU_LAYERS", -1)) # This should be 0 for CPU use
 N_BATCH = int(os.getenv("N_BATCH", 256))
 TOP_P = float(os.getenv("TOP_P", 0.9))
-TOP_K = int(os.getenv("TOP_K", 10))
+TOP_K = int(os.getenv("TOP_K", 40))
 
 
 # https://python.langchain.com/en/latest/_modules/langchain/document_loaders/excel.html#UnstructuredExcelLoader
@@ -47,10 +47,11 @@ DOCUMENT_MAP = {
 }
 
 # Default Instructor Model
+# EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "BAAI/bge-small-en-v1.5") # From PrivateGPT
 EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "hkunlp/instructor-large") # Uses 1.5 GB of VRAM (High Accuracy with lower VRAM usage)
 
-MODEL_ID= "QuantFactory/Meta-Llama-3-8B-Instruct-GGUF"
-MODEL_BASENAME = "Meta-Llama-3-8B-Instruct.Q6_K.gguf"
+# MODEL_ID= "QuantFactory/Meta-Llama-3-8B-Instruct-GGUF"
+# MODEL_BASENAME = "Meta-Llama-3-8B-Instruct.Q6_K.gguf"
 
 ####
 #### OTHER EMBEDDING MODEL OPTIONS
@@ -118,8 +119,8 @@ MODEL_BASENAME = "Meta-Llama-3-8B-Instruct.Q6_K.gguf"
 # MODEL_ID = "TheBloke/Mistral-7B-Instruct-v0.1-GGUF"
 # MODEL_BASENAME = "mistral-7b-instruct-v0.1.Q8_0.gguf"
 
-# MODEL_ID = os.getenv("MODEL_ID", "TheBloke/Mistral-7B-Instruct-v0.2-GGUF")
-# MODEL_BASENAME =  os.getenv("MODEL_BASENAME", "mistral-7b-instruct-v0.2.Q4_K_M.gguf")
+MODEL_ID = os.getenv("MODEL_ID", "TheBloke/Mistral-7B-Instruct-v0.2-GGUF")
+MODEL_BASENAME =  os.getenv("MODEL_BASENAME", "mistral-7b-instruct-v0.2.Q4_K_M.gguf")
 
 # MODEL_ID = 'bartowski/Meta-Llama-3-70B-Instruct-GGUF'
 # MODEL_BASENAME =  os.getenv("MODEL_BASENAME", "Meta-Llama-3-70B-Instruct-Q5_K_M.gguf")

@@ -60,32 +60,32 @@ def load_model(device_type, model_id, model_basename=None, LOGGING=logging):
     LOGGING.info(f"Loading Model: {model_id}, on: {device_type}...")
     # LOGGING.info("############ This action can take a few minutes!")
 
-    # Load model and tokenizer based on model_basename
-    # if model_basename:
-    #     if ".gguf" in model_basename.lower() or ".ggml" in model_basename.lower():
-    #         model_path, tokenizer = load_quantized_model_gguf_ggml(model_id, model_basename, device_type, LOGGING)
-    #     elif ".awq" in model_basename.lower():
-    #         model_path, tokenizer = load_quantized_model_awq(model_id, LOGGING)
-    #     else:
-    #         model_path, tokenizer = load_quantized_model_qptq(model_id, model_basename, device_type, LOGGING)
-    # else:
-    #     model_path, tokenizer = load_full_model(model_id, model_basename, device_type, LOGGING)
+    # Uncomment to download based on constants config
+    if model_basename:
+        if ".gguf" in model_basename.lower() or ".ggml" in model_basename.lower():
+            model_path, tokenizer = load_quantized_model_gguf_ggml(model_id, model_basename, device_type, LOGGING)
+        elif ".awq" in model_basename.lower():
+            model_path, tokenizer = load_quantized_model_awq(model_id, LOGGING)
+        else:
+            model_path, tokenizer = load_quantized_model_qptq(model_id, model_basename, device_type, LOGGING)
+    else:
+        model_path, tokenizer = load_full_model(model_id, model_basename, device_type, LOGGING)
 
-    # # LOGGING.info(f"############ model_path: {model_path}, tokenizer: {tokenizer}")
+    # LOGGING.info(f"############ model_path: {model_path}, tokenizer: {tokenizer}")
 
-    # if not model_path:
-    #     raise ValueError("Model path is not set or returned.") 
+    if not model_path:
+        raise ValueError("Model path is not set or returned.") 
 
-    # try:
-    #     generation_config = GenerationConfig.from_pretrained(model_id)
-    # except EnvironmentError:
-    #     LOGGING.warning("generation_config.json not found. Using default generation configuration.")
-    #     generation_config = GenerationConfig(
-    #         max_new_tokens=MAX_NEW_TOKENS,
-    #         temperature=float(os.getenv("TEMPERATURE", 0.2)),
-    #         top_p=float(os.getenv("TOP_P", 0.95)),
-    #         repetition_penalty=1.1,
-    #     )
+    try:
+        generation_config = GenerationConfig.from_pretrained(model_id)
+    except EnvironmentError:
+        LOGGING.warning("generation_config.json not found. Using default generation configuration.")
+        generation_config = GenerationConfig(
+            max_new_tokens=MAX_NEW_TOKENS,
+            temperature=float(os.getenv("TEMPERATURE", 0.2)),
+            top_p=float(os.getenv("TOP_P", 0.95)),
+            repetition_penalty=1.1,
+        )
 
     # LOGGING.info(f"############ Final model_path: {model_path}")
     
@@ -97,7 +97,7 @@ def load_model(device_type, model_id, model_basename=None, LOGGING=logging):
 
     try:
         llm = LlamaCpp(
-            model_path=MODEL_PATH,
+            model_path=model_path or MODEL_PATH,
             max_tokens=MAX_NEW_TOKENS,
             temperature=TEMPERATURE,
             n_ctx=CONTEXT_WINDOW_SIZE,

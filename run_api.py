@@ -8,7 +8,8 @@ import argparse
 import time
 from flask_cors import CORS
 from dotenv import load_dotenv
-
+import json
+import sqlite3
 load_dotenv()
 
 import torch
@@ -79,6 +80,38 @@ logging.info("LLM loaded.")
 
 app = Flask(__name__)
 CORS(app, expose_headers=["Stream-ID"])
+
+API_TOKEN = os.getenv("API_TOKEN")
+
+def require_token(func):
+    """Decorator to check API token"""
+    def wrapper(*args, **kwargs):
+        token = request.headers.get("Authorization")
+        if not token or token != API_TOKEN:
+            return jsonify({"error": "Unauthorized"}), 401
+        return func(*args, **kwargs)
+    return wrapper
+
+
+#  ---------- DB Init ----------
+
+DB_FILE = "/chatbot/db/chatbot.db"
+
+def init_db():
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS feedback (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id INTEGER,
+                name TEXT,
+                comments TEXT,
+                messages TEXT
+            )
+        """)
+        conn.commit()
+        
+init_db()
 
 #  ---------- API ROUTES ----------
 
@@ -279,10 +312,50 @@ def check_api_health():
     return "API Status: OK"
 
 
+@app.route("/api/save_feedback", methods=["POST"])
+def save_feedback():
+    try:
+        data = request.get_json()  # Expecting JSON in request body
+        if "messages" in data and "comments" in data:
+            with sqlite3.connect(DB_FILE) as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT INTO feedback (session_id, name, comments, messages) 
+                    VALUES (?, ?, ?, ?)
+                """, (data["id"], data["name"], data["comments"], json.dumps(data["messages"])))
+                conn.commit()
+            return jsonify({"message": "Feedback saved successfully"}), 201
+        return jsonify({"error": "Invalid data format"}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    
+
+@app.route("/api/get_feedback", methods=["GET"])
+@require_token
+def get_feedback():
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, session_id, name, comments, messages FROM feedback")
+            feedback_list = [
+                {
+                    "id": row[0],
+                    "sessionId": row[1],
+                    "name": row[2],
+                    "comments": row[3],
+                    "messages": json.loads(row[4])
+                } 
+                for row in cursor.fetchall()
+            ]
+        return jsonify(feedback_list), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 #  ---------- END OF API ROUTES ----------
 
 
-# Only serving Flash for development. Produciton runs with gunicorn
+# Only serving Flash for development. Produciton runs with gunicorn:
 # gunicorn --bind 0.0.0.0:5000 run_api:app --workers 1 --threads 1 --timeout 300
 
 if os.getenv("DEVELOPMENT", False) and __name__ == "__main__":

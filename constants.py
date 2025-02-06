@@ -21,7 +21,7 @@ CHROMA_SETTINGS = Settings(
 )
 
 INGEST_THREADS = int(os.getenv("INGEST_THREADS", os.cpu_count() or 8))
-CONTEXT_WINDOW_SIZE = int(os.getenv("CONTEXT_WINDOW_SIZE", 4096))
+CONTEXT_WINDOW_SIZE = int(os.getenv("CONTEXT_WINDOW_SIZE", 8192)) # 4096 working
 MAX_NEW_TOKENS = int(os.getenv("MAX_NEW_TOKENS", 1024))
 TEMPERATURE=float(os.getenv("TEMPERATURE", 0.1))
 R_PENALTY=float(os.getenv("R_PENALTY", 1.1))

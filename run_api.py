@@ -316,37 +316,58 @@ def check_api_health():
 def save_feedback():
     try:
         data = request.get_json()  # Expecting JSON in request body
-        if "messages" in data and "comments" in data:
+
+        if "messages" in data and "id" in data:
             with sqlite3.connect(DB_FILE) as conn:
                 cursor = conn.cursor()
-                cursor.execute("""
-                    INSERT INTO feedback (session_id, name, comments, messages) 
-                    VALUES (?, ?, ?, ?)
-                """, (data["id"], data["name"], data["comments"], json.dumps(data["messages"])))
+
+                # Get existing columns in the feedback table
+                cursor.execute("PRAGMA table_info(feedback)")
+                existing_columns = {row[1] for row in cursor.fetchall()}  # row[1] contains column names
+
+                # Expected columns from data
+                required_columns = set(data.keys()) - {"messages", "id"}  # Exclude messages (stored as JSON) and id (used by DB)
+                required_columns.update(["session_id", "messages"])  # Ensure session_id and messages are always there
+
+                # Add missing columns dynamically
+                for column in required_columns:
+                    if column not in existing_columns:
+                        cursor.execute(f'ALTER TABLE feedback ADD COLUMN {column} TEXT')  # Assuming text type
+
+                # Insert feedback
+                cursor.execute(f"""
+                    INSERT INTO feedback ({', '.join(required_columns)}) 
+                    VALUES ({', '.join(['?'] * len(required_columns))})
+                """, [json.dumps(data[col]) if col == "messages" else str(data[col]) for col in required_columns])
+
                 conn.commit()
             return jsonify({"message": "Feedback saved successfully"}), 201
+
         return jsonify({"error": "Invalid data format"}), 400
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-    
+
 
 @app.route("/api/get_feedback", methods=["GET"])
 @require_token
 def get_feedback():
     try:
         with sqlite3.connect(DB_FILE) as conn:
+            conn.row_factory = sqlite3.Row  # Allows fetching rows as dictionaries
             cursor = conn.cursor()
-            cursor.execute("SELECT id, session_id, name, comments, messages FROM feedback")
-            feedback_list = [
-                {
-                    "id": row[0],
-                    "sessionId": row[1],
-                    "name": row[2],
-                    "comments": row[3],
-                    "messages": json.loads(row[4])
-                } 
-                for row in cursor.fetchall()
-            ]
+
+            cursor.execute("SELECT * FROM feedback")  # Fetch all columns
+            feedback_list = [dict(row) for row in cursor.fetchall()]  # Convert rows to dicts
+
+            # Convert messages field to JSON if it exists
+            for feedback in feedback_list:
+                if "messages" in feedback and feedback["messages"]:
+                    try:
+                        feedback["messages"] = json.loads(feedback["messages"])
+                    except json.JSONDecodeError:
+                        pass  # Keep it as a string if JSON parsing fails
+
         return jsonify(feedback_list), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500

@@ -311,6 +311,7 @@ def run_ingest_route():
 def check_api_health():
     return "API Status: OK"
 
+# ------ FEEDBACK -------
 
 @app.route("/api/save_feedback", methods=["POST"])
 def save_feedback():
@@ -327,7 +328,7 @@ def save_feedback():
 
                 # Expected columns from data
                 required_columns = set(data.keys()) - {"messages", "id"}  # Exclude messages (stored as JSON) and id (used by DB)
-                required_columns.update(["session_id", "messages"])  # Ensure session_id and messages are always there
+                required_columns.update(["session_id", "messages", "createdAt"])  # Ensure session_id and messages are always there
 
                 # Add missing columns dynamically
                 for column in required_columns:
@@ -369,6 +370,79 @@ def get_feedback():
                         pass  # Keep it as a string if JSON parsing fails
 
         return jsonify(feedback_list), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/delete_feedback", methods=["DELETE"])
+def delete_feedback():
+    try:
+        data = request.get_json()
+        id = data.get("id")
+
+        if not id:
+            return jsonify({"error": "id is required"}), 400
+
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+
+            cursor.execute("DELETE FROM feedback WHERE id = ?", (id,))
+            conn.commit()
+
+            if cursor.rowcount == 0:
+                return jsonify({"error": "No record found with the given id"}), 404
+
+        return jsonify({"message": "Feedback deleted successfully"}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/update_feedback", methods=["PUT"])
+def update_feedback():
+    try:
+        data = request.get_json()
+        id = data.get("id")
+
+        if not id:
+            return jsonify({"error": "id is required"}), 400
+
+        if len(data.keys()) <= 1:  # Only id is provided, no update fields
+            return jsonify({"error": "No fields to update"}), 400
+
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+
+            # Get existing columns in the feedback table
+            cursor.execute("PRAGMA table_info(feedback)")
+            existing_columns = {row[1] for row in cursor.fetchall()}
+
+            # Prepare fields to update (excluding id)
+            update_columns = {col: data[col] for col in data if col not in {"id"}}
+
+            if not update_columns:
+                return jsonify({"error": "No valid columns to update"}), 400
+
+            # Add missing columns dynamically
+            for column in update_columns.keys():
+                if column not in existing_columns:
+                    cursor.execute(f'ALTER TABLE feedback ADD COLUMN {column} TEXT')
+
+            # Generate dynamic SQL query for updating
+            set_clause = ", ".join(f"{col} = ?" for col in update_columns.keys())
+            values = list(update_columns.values()) + [id]
+
+            cursor.execute(f"""
+                UPDATE feedback SET {set_clause} WHERE id = ?
+            """, values)
+
+            conn.commit()
+
+            if cursor.rowcount == 0:
+                return jsonify({"error": "No record found with the given id"}), 404
+
+        return jsonify({"message": "Feedback updated successfully"}), 200
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

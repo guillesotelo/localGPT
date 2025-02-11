@@ -10,6 +10,7 @@ ROOT_DIRECTORY = os.path.dirname(os.path.realpath(__file__))
 SOURCE_DIRECTORY = os.getenv("SOURCE_DIRECTORY", "/var/lib/hpchatbot/latest")
 PERSIST_DIRECTORY = f"{ROOT_DIRECTORY}/DB"
 MODELS_PATH = "./models"
+# MODEL_PATH = "./models/models--TheBloke--Mistral-7B-Instruct-v0.2-GGUF/snapshots/3a6fbf4a41a1d52e415a4958cde6856d34b2db93/mistral-7b-instruct-v0.2.Q4_K_M.gguf"
 MODEL_PATH = "./models/models--TheBloke--Mistral-7B-Instruct-v0.2-GGUF/snapshots/3a6fbf4a41a1d52e415a4958cde6856d34b2db93/mistral-7b-instruct-v0.2.Q4_K_M.gguf"
 # MODEL_PATH= "./models/models--TheBloke--Llama-2-13B-GGUF/snapshots/b106d1c018ac999af9130b83134fb6b7c5331dea/llama-2-13b.Q5_K_M.gguf"
 MODEL_NAME='mistral'
@@ -21,7 +22,7 @@ CHROMA_SETTINGS = Settings(
 )
 
 INGEST_THREADS = int(os.getenv("INGEST_THREADS", os.cpu_count() or 8))
-CONTEXT_WINDOW_SIZE = int(os.getenv("CONTEXT_WINDOW_SIZE", 8192)) # 4096 working
+CONTEXT_WINDOW_SIZE = int(os.getenv("CONTEXT_WINDOW_SIZE", 4096)) # 4096 working
 MAX_NEW_TOKENS = int(os.getenv("MAX_NEW_TOKENS", 1024))
 TEMPERATURE=float(os.getenv("TEMPERATURE", 0.1))
 R_PENALTY=float(os.getenv("R_PENALTY", 1.1))
@@ -48,7 +49,8 @@ DOCUMENT_MAP = {
 
 # Default Instructor Model
 # EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "BAAI/bge-small-en-v1.5") # From PrivateGPT
-EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "hkunlp/instructor-large") # Uses 1.5 GB of VRAM (High Accuracy with lower VRAM usage)
+# EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "hkunlp/instructor-large") # (Working) Uses 1.5 GB of VRAM (High Accuracy with lower VRAM usage)
+EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "BAAI/bge-large-en-v1.5") # Uses ~5 GB of VRAM (High Accuracy & Retrieval)
 
 # MODEL_ID= "QuantFactory/Meta-Llama-3-8B-Instruct-GGUF"
 # MODEL_BASENAME = "Meta-Llama-3-8B-Instruct.Q6_K.gguf"
@@ -119,8 +121,11 @@ EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "hkunlp/instructor-larg
 # MODEL_ID = "TheBloke/Mistral-7B-Instruct-v0.1-GGUF"
 # MODEL_BASENAME = "mistral-7b-instruct-v0.1.Q8_0.gguf"
 
+# MODEL_ID = os.getenv("MODEL_ID", "TheBloke/Mistral-7B-Instruct-v0.2-GGUF")
+# MODEL_BASENAME =  os.getenv("MODEL_BASENAME", "mistral-7b-instruct-v0.2.Q4_K_M.gguf")
+
 MODEL_ID = os.getenv("MODEL_ID", "TheBloke/Mistral-7B-Instruct-v0.2-GGUF")
-MODEL_BASENAME =  os.getenv("MODEL_BASENAME", "mistral-7b-instruct-v0.2.Q4_K_M.gguf")
+MODEL_BASENAME =  os.getenv("MODEL_BASENAME", "mistral-7b-instruct-v0.2.Q5_K_M.gguf")
 
 # MODEL_ID = 'bartowski/Meta-Llama-3-70B-Instruct-GGUF'
 # MODEL_BASENAME =  os.getenv("MODEL_BASENAME", "Meta-Llama-3-70B-Instruct-Q5_K_M.gguf")

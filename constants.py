@@ -23,7 +23,7 @@ CHROMA_SETTINGS = Settings(
 
 INGEST_THREADS = int(os.getenv("INGEST_THREADS", os.cpu_count() or 8))
 CONTEXT_WINDOW_SIZE = int(os.getenv("CONTEXT_WINDOW_SIZE", 4096)) # 4096 working
-MAX_NEW_TOKENS = int(os.getenv("MAX_NEW_TOKENS", 1024))
+MAX_NEW_TOKENS = int(os.getenv("MAX_NEW_TOKENS", 2048))
 TEMPERATURE=float(os.getenv("TEMPERATURE", 0.1))
 R_PENALTY=float(os.getenv("R_PENALTY", 1.1))
 N_GPU_LAYERS = int(os.getenv("N_GPU_LAYERS", -1)) # This should be 0 for CPU use
@@ -51,6 +51,7 @@ DOCUMENT_MAP = {
 # EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "BAAI/bge-small-en-v1.5") # From PrivateGPT
 # EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "hkunlp/instructor-large") # (Working) Uses 1.5 GB of VRAM (High Accuracy with lower VRAM usage)
 EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "BAAI/bge-large-en-v1.5") # Uses ~5 GB of VRAM (High Accuracy & Retrieval)
+# EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "hkunlp/instructor-xl") # Uses 5 GB of VRAM (Most Accurate of all models)
 
 # MODEL_ID= "QuantFactory/Meta-Llama-3-8B-Instruct-GGUF"
 # MODEL_BASENAME = "Meta-Llama-3-8B-Instruct.Q6_K.gguf"

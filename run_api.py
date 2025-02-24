@@ -18,13 +18,17 @@ from langchain.chains import create_history_aware_retriever
 from langchain.chains.retrieval import create_retrieval_chain
 from langchain_community.embeddings import HuggingFaceInstructEmbeddings
 from run_localGPT import load_model
-from prompt_template_utils import get_prompt_template, system_prompt, contextualize_q_system_prompt
+from prompt_template_utils import get_prompt_template, system_prompt, contextualize_q_system_prompt, get_sources_template
 from langchain_community.vectorstores import Chroma
 from werkzeug.utils import secure_filename
 from streaming_chain import StreamingChain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables.history import RunnableWithMessageHistory
+
+from langchain.chains import RetrievalQA
+from langchain.prompts import PromptTemplate
+from langchain_core.runnables import RunnableParallel
 
 from constants import CHROMA_SETTINGS, EMBEDDING_MODEL_NAME, PERSIST_DIRECTORY, MODEL_ID, MODEL_BASENAME, MODEL_NAME
 from threading import Lock
@@ -71,7 +75,8 @@ DB = Chroma(
     client_settings=CHROMA_SETTINGS,
 )
 
-retriever = DB.as_retriever()
+retriever = DB.as_retriever(search_kwargs={"k": 10})
+source_retriever = DB.as_retriever()
 
 # Load the model with streaming support
 LLM = load_model(device_type=DEVICE_TYPE, model_id=MODEL_ID, model_basename=MODEL_BASENAME)
@@ -160,7 +165,12 @@ def prompt_route():
 
                 # Use documents context
                 if use_context:
+                    print('\n')
                     print(f"\n\n*** Using chat with CONTEXT ***\n")
+                    print('\n')
+                    print(f"\nUser Prompt: {user_prompt}")
+                    print('\n')
+
                     ctx_system_prompt = f"""
                         {system_prompt}
                         \n\n
@@ -187,6 +197,7 @@ def prompt_route():
                         question_answer_chain = create_stuff_documents_chain(LLM, ctx_history_prompt)
                         rag_chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
                         chain = rag_chain.pick("answer")
+                        
                         for token in chain.stream({"input": user_prompt}):
                             if active_streams.get(stream_id, {}).get("stop"):
                                 logging.info(f"Stopping stream {stream_id} due to user request.")
@@ -202,16 +213,38 @@ def prompt_route():
                             ]
                         )
 
+
+                        # Build stream chain
                         question_answer_chain = create_stuff_documents_chain(LLM, prompt)
                         rag_chain = create_retrieval_chain(retriever, question_answer_chain)
 
                         chain = rag_chain.pick("answer")
+
                         for token in chain.stream({"input": user_prompt}):
                             if active_streams.get(stream_id, {}).get("stop"):
                                 logging.info(f"Stopping stream {stream_id} due to user request.")
                                 break  # Exit the loop if stop signal is received
                             yield token
                         print("\n\n")
+
+                        # Get sources
+                        retriever_results = source_retriever.get_relevant_documents(user_prompt)
+                        sources = []
+                        unique_sources = set()
+                        for doc in retriever_results:
+                            source = doc.metadata.get("source", "Unknown Source")
+                            if source not in unique_sources:
+                                unique_sources.add(source)
+                                sources.append(source)
+                        
+                        if sources:
+                            yield f"\n <br/><br/><strong>Sources:</strong>"
+                            for source in sources:
+                                unreleased_mark = ''
+                                if 'UNRELEASED' in source:
+                                    unreleased_mark = ' (unreleased)'
+                                time.sleep(0.15)
+                                yield f"\n- {source}{unreleased_mark}"
 
                 # Chat with LLM only
                 else:
@@ -239,6 +272,84 @@ def prompt_route():
     response.headers["Stream-ID"] = stream_id
     logging.info(f">>> Generated response for stream ID: {stream_id}")
     logging.info(">>> Exiting /api/prompt_route")
+    return response
+
+# ---- This is a testing route ----
+@app.route("/api/prompt_route_test", methods=["GET", "POST"])
+def prompt_route_test():
+    logging.info(">>> Entering /api/prompt_route_test")
+    user_prompt = request.form.get("user_prompt")
+    use_context = request.form.get("use_context")
+    use_history = request.form.get("use_history")
+    stream_id = int(request.form.get("stream_id", str(int(time.time() * 1000))))
+    stop = request.form.get("stop", "false").lower() == "true"
+
+    if stop:
+        with stream_lock:
+            if stream_id not in active_streams:
+                return jsonify({"error": f"Stream {stream_id} not found"}), 404
+            active_streams[stream_id]["stop"] = True
+        logging.info(f"Stop signal sent for stream ID: {stream_id}")
+        return jsonify({"message": f"Stream {stream_id} stop signal issued."}), 200
+
+    if use_context is None:
+        use_context = True
+    else:
+        use_context = use_context.lower() == "true"
+
+    if use_history is None:
+        use_history = False
+    else:
+        use_history = use_history.lower() == "true"
+
+    if not user_prompt:
+        return "No user prompt received", 400
+
+    with stream_lock:
+        if stream_id in active_streams:
+            return jsonify({"error": f"Stream {stream_id} is already in progress"}), 409
+        active_streams[stream_id] = {"stop": False, "lock": Lock()}
+
+    def generate_stream():
+        try:
+            with active_streams[stream_id]["lock"]:
+                print(f"\n\n*** TESTING CHAT ***\n")
+                
+                # Step 1: Retrieve relevant documents first (stream retrieval)
+                retriever_results = retriever.get_relevant_documents(user_prompt)
+                sources = []
+                for doc in retriever_results:
+                    sources.append(doc.metadata.get("source", "Unknown Source"))
+                
+                prompt, memory = get_prompt_template(
+                    promptTemplate_type=MODEL_NAME, user_prompt=user_prompt, use_context=use_context
+                )
+                question_answer_chain = create_stuff_documents_chain(LLM, prompt)
+                rag_chain = create_retrieval_chain(retriever, question_answer_chain)
+
+                chain = rag_chain.pick("answer")
+
+                for token in chain.stream({"input": user_prompt}):
+                    if active_streams.get(stream_id, {}).get("stop"):
+                        logging.info(f"Stopping stream {stream_id} due to user request.")
+                        break  # Exit the loop if stop signal is received
+                    yield token
+                print("\n\n")
+
+                # Step 4: Stream sources as they are retrieved
+                if sources:
+                    yield f"\n <br/><br/><strong>Sources:</strong>"
+                    for source in sources:
+                        yield f"\n- {source}"
+
+        finally:
+            with stream_lock:
+                active_streams.pop(stream_id, None)
+
+    response = Response(generate_stream(), mimetype="text/plain")
+    response.headers["Stream-ID"] = stream_id
+    logging.info(f">>> Generated response for stream ID: {stream_id}")
+    logging.info(">>> Exiting /api/prompt_route_test")
     return response
 
 

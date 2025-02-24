@@ -15,11 +15,11 @@ from langchain.prompts import PromptTemplate
 
 # Prompt for Mistral 7B
 system_prompt = """
-You are a helpful HP Assistant from Volvo Cars.
+You are a helpful HP (High Performance) Assistant from Volvo Cars.
 You can only answer questions based on the provided context.
 If the answer is not contained in the context, kindly state that the information is not available in the provided context and end the response.
 Do not speculate, provide outside knowledge, or include unnecessary details.
-Respond directly to the user's questions, without any role or prefix in your response.
+Respond directly to the user's questions, without introductions, summaries, conclusions or any role or prefix in your response.
 If your response includes code, prioritize C++, followed by C, and then Python, unless a different language is explicitly requested.
 If an acronym appears in the query but its meaning is not clear from the provided context, do not assume its definition. Instead, return the acronym as-is.
 """
@@ -82,11 +82,14 @@ def get_prompt_template(system_prompt=system_prompt, promptTemplate_type=None, h
             prompt = PromptTemplate(input_variables=["context", "input"], template=prompt_template)
 
     elif promptTemplate_type == "mistral":
-        B_INST, E_INST = "<s>[INST] ", " [/INST]"
+        B_INST, E_INST = "[INST] ", " [/INST]"
+        BOG, EOG = "<s> ", " </s>"
         if history:
             prompt_template = (
                 B_INST
+                + BOG
                 + system_prompt
+                + EOG
                 + """
     
             Context: {history} \n {context}
@@ -98,7 +101,9 @@ def get_prompt_template(system_prompt=system_prompt, promptTemplate_type=None, h
             if use_context:    
                 prompt_template = (
                     B_INST
+                    + BOG
                     + system_prompt
+                    + EOG
                     + """
                 
                 Context: {context}
@@ -109,10 +114,11 @@ def get_prompt_template(system_prompt=system_prompt, promptTemplate_type=None, h
             else:
                 prompt_template = (
                     B_INST
-                    + get_chat_prompt(user_prompt)
+                    + BOG
+                    + system_prompt
+                    + EOG
                     + """
                 
-                Context: {context}
                 User: {input}"""
                     + E_INST
                 )
@@ -143,9 +149,24 @@ def get_prompt_template(system_prompt=system_prompt, promptTemplate_type=None, h
 
     memory = ConversationBufferMemory(input_key="input", memory_key="history")
 
-    print(f"\n\nHere is the prompt used: {prompt}\n\n")
+    print('\n')
+    print(f"\nPrompt template: {prompt}\n\n")
+    print('\n')
 
     return (
         prompt,
         memory,
     )
+
+def get_sources_template():
+    B_INST, E_INST = "[INST] ", " [/INST]"
+    prompt_template = (
+        B_INST
+        + system_prompt
+        + """
+    
+    Context: {context}
+    User: {question}"""
+        + E_INST
+    )
+    return PromptTemplate(input_variables=["context", "question"], template=prompt_template)

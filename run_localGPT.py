@@ -368,7 +368,7 @@ def retrieval_qa_pipline(device_type, use_history, promptTemplate_type="llama"):
 )
 @click.option(
     "--model_type",
-    default="llama3",
+    default="mistral",
     type=click.Choice(
         ["llama3", "llama", "mistral", "non_llama"],
     ),

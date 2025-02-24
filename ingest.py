@@ -2,6 +2,9 @@ import logging
 import os
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 import shutil
+import psutil
+import time
+import stat
 
 import click
 import torch
@@ -34,91 +37,42 @@ def file_log(logentry):
     print(logentry + "\n")
 
 
-def load_single_document(file_path: str) -> Document:
-    # Loads a single document from a file path
-    try:
-        file_extension = os.path.splitext(file_path)[1]
-        loader_class = DOCUMENT_MAP.get(file_extension)
-        if loader_class:
-            file_log(file_path + " loaded.")
-            loader = loader_class(file_path)
-        else:
-            file_log(file_path + " document type is undefined.")
-            raise ValueError("Document type is undefined")
-        return loader.load()[0]
-    except Exception as ex:
-        file_log("%s loading error: \n%s" % (file_path, ex))
-        return None
+def remove_readonly(func, path, _):
+    """Clear read-only permissions and retry deletion."""
+    os.chmod(path, stat.S_IWRITE)
+    func(path)
 
 
-def load_document_batch(filepaths):
-    logging.info("Loading document batch...")
-    # create a thread pool
-    with ThreadPoolExecutor(len(filepaths)) as exe:
-        # load files
-        futures = [exe.submit(load_single_document, name) for name in filepaths]
-        # collect data
-        if futures is None:
-            file_log(name + " failed to submit")
-            return None
-        else:
-            data_list = [future.result() for future in futures]
-            # return data and file paths
-            return (data_list, filepaths)
+def force_delete_chroma_db(db_path, max_retries=3, retry_delay=2):
+    if os.path.exists(db_path):
+        logging.info(f"Attempting to delete ChromaDB at: {db_path}")
 
-
-def load_documents(source_dir: str) -> list[Document]:
-    # Loads all documents from the source documents directory, including nested folders
-    paths = []
-    for root, _, files in os.walk(source_dir):
-        for file_name in files:
-            print("Importing: " + file_name)
-            file_extension = os.path.splitext(file_name)[1]
-            source_file_path = os.path.join(root, file_name)
-            if file_extension in DOCUMENT_MAP.keys():
-                paths.append(source_file_path)
-
-    # Have at least one worker and at most INGEST_THREADS workers
-    n_workers = min(INGEST_THREADS, max(len(paths), 1))
-    chunksize = round(len(paths) / n_workers)
-    docs = []
-    with ProcessPoolExecutor(n_workers) as executor:
-        futures = []
-        # split the load operations into chunks
-        for i in range(0, len(paths), chunksize):
-            # select a chunk of filenames
-            filepaths = paths[i : (i + chunksize)]
-            # submit the task
+        # Kill any process using ChromaDB
+        for proc in psutil.process_iter(['pid', 'name', 'open_files']):
             try:
-                future = executor.submit(load_document_batch, filepaths)
-            except Exception as ex:
-                file_log("executor task failed: %s" % (ex))
-                future = None
-            if future is not None:
-                futures.append(future)
-        # process all results
-        for future in as_completed(futures):
-            # open the file and load the data
+                if proc.info['open_files']:
+                    for file in proc.info['open_files']:
+                        if db_path in file.path:
+                            logging.info(f"Killing process {proc.info['name']} (PID: {proc.info['pid']})")
+                            proc.terminate()
+                            proc.wait(timeout=3)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        
+        # Retry deletion with permissions fix
+        for attempt in range(max_retries):
             try:
-                contents, _ = future.result()
-                docs.extend(contents)
-            except Exception as ex:
-                file_log("Exception: %s" % (ex))
+                shutil.rmtree(db_path, onerror=remove_readonly)
+                if not os.path.exists(db_path):
+                    logging.info(f"Successfully deleted DB folder: {db_path}")
+                    return
+            except Exception as e:
+                logging.warning(f"Attempt {attempt + 1} failed: {e}")
+                time.sleep(retry_delay)
 
-    return docs
-
-
-def split_documents(documents: list[Document]) -> tuple[list[Document], list[Document]]:
-    # Splits documents for correct Text Splitter
-    text_docs, python_docs = [], []
-    for doc in documents:
-        if doc is not None:
-            file_extension = os.path.splitext(doc.metadata["source"])[1]
-            if file_extension == ".py":
-                python_docs.append(doc)
-            else:
-                text_docs.append(doc)
-    return text_docs, python_docs
+        logging.error(f"Failed to delete DB folder after {max_retries} attempts. Delete it manually.")
+    else:
+        logging.info("ChromaDB folder does not exist.")
 
 
 @click.command()
@@ -151,30 +105,44 @@ def split_documents(documents: list[Document]) -> tuple[list[Document], list[Doc
     help="Device to run on. (Default is cuda)",
 )
 def main(device_type):
-    
     # Delete DB folder
-    shutil.rmtree(PERSIST_DIRECTORY, ignore_errors=True)
-    logging.info(f"Deleted folder: {PERSIST_DIRECTORY}")
-    
+    force_delete_chroma_db(PERSIST_DIRECTORY)
+
     # Load documents and split in chunks
     logging.info(f"Loading documents from {SOURCE_DIRECTORY}...")
-    documents = load_documents(SOURCE_DIRECTORY)
-    text_documents, python_documents = split_documents(documents)
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=512, chunk_overlap=128)
-    python_splitter = RecursiveCharacterTextSplitter.from_language(
-        language=Language.PYTHON, chunk_size=512, chunk_overlap=128
-    )
-    texts = text_splitter.split_documents(text_documents)
-    texts.extend(python_splitter.split_documents(python_documents))
+
+    # Loads all documents from the source documents directory, including nested folders
+    documents = []
+    for root, _, files in os.walk(SOURCE_DIRECTORY):
+        for file_name in sorted(files):
+            file_extension = os.path.splitext(file_name)[1]
+            if file_extension == '.txt':
+                print("Importing: " + file_name)
+                source_file_path = os.path.join(root, file_name)
+                try:
+                    file_log(source_file_path + " loaded.")
+                    loader_class = DOCUMENT_MAP.get('.txt')
+                    loader = loader_class(source_file_path)
+                    document = loader.load()[0]
+
+                    # metadata
+                    if '§' in file_name:
+                        spliturl = file_name[4:].replace('¤','/').split('§') 
+                        url = '[' + spliturl[0] + '](' + 'https://hpdevp.server-name.net/' + spliturl[1].replace('.txt','.html)')
+                        document.metadata["source"] = url
+                    documents.append(document)
+
+                    if len(documents) == 0:
+                        exit()
+
+                except Exception as ex:
+                    file_log("%s loading error: \n%s" % (source_file_path, ex))
+
+    #text_splitter = RecursiveCharacterTextSplitter(separators=["\n\n\n","\n\n","\n"," ",".",",",""],chunk_size=512, chunk_overlap=128)
+    text_splitter = RecursiveCharacterTextSplitter(separators=["\n\n", "\n", ". "],chunk_size=512, chunk_overlap=256)
+    texts = text_splitter.split_documents(documents)
     logging.info(f"Loaded {len(documents)} documents from {SOURCE_DIRECTORY}")
     logging.info(f"Split into {len(texts)} chunks of text")
-
-    """
-    (1) Chooses an appropriate langchain library based on the enbedding model name.  Matching code is contained within run_localGPT.py.
-    
-    (2) Provides additional arguments for instructor and BGE models to improve results, pursuant to the instructions contained on
-    their respective huggingface repository, project page or github repository.
-    """
 
     embeddings = get_embeddings(device_type)
 

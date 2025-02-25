@@ -151,6 +151,7 @@ def main(device_type):
         embeddings,
         persist_directory=PERSIST_DIRECTORY,
         client_settings=CHROMA_SETTINGS,
+        collection_metadata={"hnsw:space": "cosine"}
     )
 
     logging.info(f"*** Successfully loaded embeddings from {EMBEDDING_MODEL_NAME} ***")

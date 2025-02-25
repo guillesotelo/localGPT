@@ -32,7 +32,7 @@ from langchain_core.runnables import RunnableParallel
 
 from constants import CHROMA_SETTINGS, EMBEDDING_MODEL_NAME, PERSIST_DIRECTORY, MODEL_ID, MODEL_BASENAME, MODEL_NAME
 from threading import Lock
-
+from utils import get_embeddings
 # For enterprise use
 import ssl
 
@@ -66,17 +66,21 @@ import gc
 
 gc.collect()
 # Load embeddings Model
-EMBEDDINGS = HuggingFaceInstructEmbeddings(model_name=EMBEDDING_MODEL_NAME, model_kwargs={"device": DEVICE_TYPE})
+EMBEDDINGS = get_embeddings(DEVICE_TYPE)
 
 # Load the vectorstore
 DB = Chroma(
     persist_directory=PERSIST_DIRECTORY,
     embedding_function=EMBEDDINGS,
     client_settings=CHROMA_SETTINGS,
+    collection_metadata={"hnsw:space": "cosine"}
 )
 
-retriever = DB.as_retriever(search_kwargs={"k": 10})
-source_retriever = DB.as_retriever()
+retriever = DB.as_retriever(
+    search_kwargs={"k": 10},
+    search_type="similarity",
+    similarity_metric="cosine" 
+)
 
 # Load the model with streaming support
 LLM = load_model(device_type=DEVICE_TYPE, model_id=MODEL_ID, model_basename=MODEL_BASENAME)
@@ -228,7 +232,40 @@ def prompt_route():
                         print("\n\n")
 
                         # Get sources
-                        retriever_results = source_retriever.get_relevant_documents(user_prompt)
+                        # context_chain = rag_chain.pick("context")
+                        # sources = context_chain.invoke({"input": user_prompt})
+
+                        # if isinstance(sources, list) and len(sources):
+                        #     yield f"\n<br/><br/><strong>Sources:</strong>"
+                        #     for i, source in enumerate(sources[:4]):
+                        #         unreleased_mark = ' (unreleased)' if 'UNRELEASED' in source.metadata.get('source', '') else ''
+                        #         yield f"\n- {source.metadata.get('source')}{unreleased_mark}"
+                        # retriever_results = retriever.get_relevant_documents(user_prompt)
+
+                        retriever_results_with_scores = DB.similarity_search_with_relevance_scores(user_prompt, k=10)
+
+                        for doc, score in retriever_results_with_scores:
+                            logging.info(f"\n")
+                            logging.info(f"Document: {doc.metadata.get('source', 'Unknown Source')} | Score: {score}")
+
+                        SIMILARITY_THRESHOLD = 0.71
+
+                        filtered_results = sorted(
+                            [(doc, score) for doc, score in retriever_results_with_scores if score >= SIMILARITY_THRESHOLD],
+                            key=lambda x: x[1], 
+                            reverse=True
+                        )
+
+                        retriever_results = [doc for doc, score in filtered_results]
+
+                        # If sources don't enter the threshold then we check if the slopoe 
+                        # between the first two is steep enough to return the first one.
+                        if not filtered_results:
+                            sorted_results = sorted(retriever_results_with_scores, key=lambda x: x[1], reverse=True)
+
+                            if len(sorted_results) > 1 and (sorted_results[0][1] - sorted_results[1][1]) >= 0.05:
+                                retriever_results = [sorted_results[0][0]]
+
                         sources = []
                         unique_sources = set()
                         for doc in retriever_results:
@@ -236,15 +273,17 @@ def prompt_route():
                             if source not in unique_sources:
                                 unique_sources.add(source)
                                 sources.append(source)
-                        
+
                         if sources:
-                            yield f"\n <br/><br/><strong>Sources:</strong>"
-                            for source in sources:
-                                unreleased_mark = ''
-                                if 'UNRELEASED' in source:
-                                    unreleased_mark = ' (unreleased)'
-                                time.sleep(0.15)
+                            if len(sources) > 1:
+                                yield f"\n <br/><br/><strong>Sources:</strong>"
+                            else:
+                                yield f"\n <br/><br/><strong>Source:</strong>"
+                            for i, source in enumerate(sources[:4]):
+                                unreleased_mark = ' (unreleased)' if 'UNRELEASED' in source else ''
+                                time.sleep(0.15)  # Simulating streaming effect
                                 yield f"\n- {source}{unreleased_mark}"
+
 
                 # Chat with LLM only
                 else:

@@ -597,6 +597,26 @@ def update_feedback():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route('/api/vectorstore_search', methods=['GET'])
+def search_vectors():
+    query = request.args.get('query', '')
+
+    if not query:
+        return jsonify({"error": "Query parameter is required"}), 400
+    
+    query_embedding = EMBEDDINGS.embed_query(query)
+
+    # Search ChromaDB for similar vectors
+    results =  DB._collection.query(query_embeddings=[query_embedding], n_results=10)
+    # Extract matched documents
+
+    found_exact = any(query in doc_text for doc_text in results["documents"][0])
+    matching_docs = results.get("documents", [[]])[0]
+    
+    # Return matches as JSON
+    return jsonify({"query": query, "matches": matching_docs, "exact": found_exact})
+
+
 #  ---------- END OF API ROUTES ----------
 
 

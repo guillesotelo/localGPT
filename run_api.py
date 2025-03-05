@@ -30,7 +30,17 @@ from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
 from langchain_core.runnables import RunnableParallel
 
-from constants import CHROMA_SETTINGS, EMBEDDING_MODEL_NAME, PERSIST_DIRECTORY, MODEL_ID, MODEL_BASENAME, MODEL_NAME
+from constants import (
+    CHROMA_SETTINGS, 
+    EMBEDDING_MODEL_NAME, 
+    PERSIST_DIRECTORY, 
+    MODEL_ID, 
+    MODEL_BASENAME, 
+    MODEL_NAME, 
+    RETRIEVE_K_DOCS,
+    COLLECTION_METADATA
+)
+
 from threading import Lock
 from utils import get_embeddings
 # For enterprise use
@@ -41,6 +51,8 @@ ssl._create_default_https_context = ssl._create_unverified_context
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(filename)s:%(lineno)s - %(message)s", level=logging.DEBUG)
 
 os.environ["CURL_CA_BUNDLE"] = ""
+# os.environ["CURL_CA_BUNDLE"] = "/etc/ssl/certs/ca-certificates.crt"
+os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 
 # Determine device type
 if torch.backends.mps.is_available():
@@ -73,11 +85,11 @@ DB = Chroma(
     persist_directory=PERSIST_DIRECTORY,
     embedding_function=EMBEDDINGS,
     client_settings=CHROMA_SETTINGS,
-    collection_metadata={"hnsw:space": "cosine"}
+    collection_metadata=COLLECTION_METADATA
 )
 
 retriever = DB.as_retriever(
-    search_kwargs={"k": 10},
+    search_kwargs={"k": RETRIEVE_K_DOCS},
     search_type="similarity",
     similarity_metric="cosine" 
 )
@@ -224,25 +236,14 @@ def prompt_route():
 
                         chain = rag_chain.pick("answer")
 
-                        for token in chain.stream({"input": user_prompt}):
+                        for token in chain.stream({"input": f"query: {user_prompt}"}):
                             if active_streams.get(stream_id, {}).get("stop"):
                                 logging.info(f"Stopping stream {stream_id} due to user request.")
                                 break  # Exit the loop if stop signal is received
                             yield token
                         print("\n\n")
 
-                        # Get sources
-                        # context_chain = rag_chain.pick("context")
-                        # sources = context_chain.invoke({"input": user_prompt})
-
-                        # if isinstance(sources, list) and len(sources):
-                        #     yield f"\n<br/><br/><strong>Sources:</strong>"
-                        #     for i, source in enumerate(sources[:4]):
-                        #         unreleased_mark = ' (unreleased)' if 'UNRELEASED' in source.metadata.get('source', '') else ''
-                        #         yield f"\n- {source.metadata.get('source')}{unreleased_mark}"
-                        # retriever_results = retriever.get_relevant_documents(user_prompt)
-
-                        retriever_results_with_scores = DB.similarity_search_with_relevance_scores(user_prompt, k=10)
+                        retriever_results_with_scores = DB.similarity_search_with_relevance_scores(user_prompt, k=RETRIEVE_K_DOCS)
 
                         for doc, score in retriever_results_with_scores:
                             logging.info(f"\n")
@@ -604,14 +605,14 @@ def search_vectors():
     if not query:
         return jsonify({"error": "Query parameter is required"}), 400
     
-    query_embedding = EMBEDDINGS.embed_query(query)
+    query_embedding = EMBEDDINGS.embed_query(f"query: {query}")
 
     # Search ChromaDB for similar vectors
     results =  DB._collection.query(query_embeddings=[query_embedding], n_results=10)
     # Extract matched documents
 
-    found_exact = any(query in doc_text for doc_text in results["documents"][0])
     matching_docs = results.get("documents", [[]])[0]
+    found_exact = any(query.lower() in doc_text.lower() for doc_text in matching_docs)
     
     # Return matches as JSON
     return jsonify({"query": query, "matches": matching_docs, "exact": found_exact})

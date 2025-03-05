@@ -20,6 +20,9 @@ from constants import (
     INGEST_THREADS,
     PERSIST_DIRECTORY,
     SOURCE_DIRECTORY,
+    CHUNK_SIZE,
+    CHUNK_OVERLAP,
+    COLLECTION_METADATA
 )
 
 import nltk
@@ -28,7 +31,8 @@ nltk.download("punkt_tab")
 nltk.download("averaged_perceptron_tagger_eng")
 
 os.environ["CURL_CA_BUNDLE"] = ""
-
+# os.environ["CURL_CA_BUNDLE"] = "/chatbot/certs/huggingface.crt"
+os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 
 def file_log(logentry):
     file1 = open("file_ingest.log", "a")
@@ -139,7 +143,7 @@ def main(device_type):
                     file_log("%s loading error: \n%s" % (source_file_path, ex))
 
     #text_splitter = RecursiveCharacterTextSplitter(separators=["\n\n\n","\n\n","\n"," ",".",",",""],chunk_size=512, chunk_overlap=128)
-    text_splitter = RecursiveCharacterTextSplitter(separators=["\n\n", "\n", ". "],chunk_size=512, chunk_overlap=256)
+    text_splitter = RecursiveCharacterTextSplitter(separators=["\n\n\n","\n\n", "\n", ". "],chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)
     texts = text_splitter.split_documents(documents)
     logging.info(f"Loaded {len(documents)} documents from {SOURCE_DIRECTORY}")
     logging.info(f"Split into {len(texts)} chunks of text")
@@ -151,7 +155,7 @@ def main(device_type):
         embeddings,
         persist_directory=PERSIST_DIRECTORY,
         client_settings=CHROMA_SETTINGS,
-        collection_metadata={"hnsw:space": "cosine"}
+        collection_metadata=COLLECTION_METADATA
     )
 
     logging.info(f"*** Successfully loaded embeddings from {EMBEDDING_MODEL_NAME} ***")

@@ -5,7 +5,7 @@ from llama_cpp import Llama
 print("Is CUDA available? ", torch.cuda.is_available())
 print("Current CUDA device: ", torch.cuda.get_device_name(torch.cuda.current_device()))
 
-model_path = './models/models--TheBloke--Mistral-7B-Instruct-v0.2-GGUF/snapshots/3a6fbf4a41a1d52e415a4958cde6856d34b2db93/mistral-7b-instruct-v0.2.Q4_K_M.gguf'
+model_path = './models/models--TheBloke--Mistral-7B-Instruct-v0.2-GGUF/snapshots/3a6fbf4a41a1d52e415a4958cde6856d34b2db93/mistral-7b-instruct-v0.2.Q5_K_M.gguf'
 
 model = Llama(
     model_path,

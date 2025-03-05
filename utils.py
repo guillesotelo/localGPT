@@ -42,9 +42,20 @@ def get_embeddings(device_type="cuda"):
         return HuggingFaceBgeEmbeddings(
             model_name=EMBEDDING_MODEL_NAME,
             model_kwargs={"device": device_type},
-            query_instruction="Represent this sentence for searching relevant passages:",
+            # Removing this for BGE embedding model
+            # query_instruction="Represent this sentence for searching relevant passages:",
         )
-
+    
+    elif "jina" in EMBEDDING_MODEL_NAME or "gte" in EMBEDDING_MODEL_NAME:
+        # Use HuggingFaceEmbeddings for Jina model, adding `trust_remote_code`
+        return HuggingFaceEmbeddings(
+            model_name=EMBEDDING_MODEL_NAME,
+            model_kwargs={
+                "device": device_type,
+                "trust_remote_code": True  # Allow custom code execution
+            },
+        )
+    
     else:
         return HuggingFaceEmbeddings(
             model_name=EMBEDDING_MODEL_NAME,

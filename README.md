@@ -231,6 +231,12 @@ If that doesn't work, try with empty path instead:
    export REQUESTS_CA_BUNDLE=
 ```
 
+If the error is about MaxRetryError for a certain host like `cdn-lfs-us-1.hf.co`, it's a good practice to force HuggingFace mirror to be US based:
+
+```python
+os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
+```
+
 ### Fix broken dependencies
 
 Run:
@@ -386,3 +392,101 @@ Option 2 (this one worked with cuda 12.5):
 ```shell
    CMAKE_ARGS="-DGGML_CUDA=on -DLLAVA_BUILD=off" pip install -U llama-cpp-python --force-reinstall --no-cache-dir
 ```
+
+## Frontend
+
+### Introduction
+
+The chatbot frontend is served via Node and Apache service.
+
+This is the working hpchatbot.conf in folder `/etc/apache2/sites-enabled`:
+
+```bash
+<VirtualHost 10.55.101.133:80>
+    ServerName hpchatbot.server-name.net
+    ServerAlias hpchatbot.server-name.net
+    Redirect permanent / https://hpchatbot.server-name.net/
+</VirtualHost>
+
+<IfModule mod_ssl.c>
+    <VirtualHost 10.55.101.133:443>
+        ServerName hpchatbot.server-name.net
+        ServerAdmin guillermo.sotelo@server-name.com
+
+        # Enable Proxying
+        ProxyPreserveHost On
+        ProxyRequests Off
+
+        # Proxy API requests to API
+        ProxyPass /api http://localhost:5000/api
+        ProxyPassReverse /api http://localhost:5000/api
+
+        # Proxy all other requests to React app
+        ProxyPass / http://localhost:3000/
+        ProxyPassReverse / http://localhost:3000/
+
+        ErrorLog ${APACHE_LOG_DIR}/hpchatbot-error.log
+        CustomLog ${APACHE_LOG_DIR}/hpchatbot-access.log combined
+
+        # SSL Config
+        SSLEngine on
+        SSLCertificateFile /var/lib/hpchatbot/ssl/CAbundle2024.cer
+        SSLCertificateKeyFile /var/lib/hpchatbot/ssl/PrivateKey.key
+        SSLCertificateChainFile /var/lib/hpchatbot/ssl/CAbundle2024.cer
+        SSLCACertificatePath /etc/ssl/certs/
+
+        # Optional: Strict HTTPS Enforcement
+        <FilesMatch "\.(cgi|shtml|phtml|php)$">
+            SSLOptions +StdEnvVars
+        </FilesMatch>
+        <Directory /usr/lib/cgi-bin>
+            SSLOptions +StdEnvVars
+            AddHandler cgi-script .py
+        </Directory>
+
+        FileETag None
+        Header unset ETag
+        Header set Cache-Control "max-age=0, no-cache, no-store, must-revalidate"
+        Header set Pragma "no-cache"
+        Header set Expires "Wed, 21 Oct 2015 01:00:00 GMT"
+
+    </VirtualHost>
+</IfModule>
+
+# for CGI-bin
+<VirtualHost 10.55.101.133:8080>
+    ServerAdmin guillermo.sotelo@server-name.com
+    DocumentRoot /var/www/html
+</VirtualHost>
+```
+
+Note: If the server was rebooted and apache2 service present errors, run:
+
+```bash
+sudo a2enmod headers
+sudo systemctl restart apache2
+```
+
+### Run Node app
+
+We use pm2 to control the app in production.
+To run the application for the first time, go to `/chatbot/source/ui` and run this command:
+
+```bash
+pm2 delete all && pm2 start server.js
+```
+
+To check the logs: 
+
+```bash
+pm2 logs
+```
+
+This server serves the build folder wich is generated from a react app. We can deploy this by running this on the same folder:
+
+```bash
+npm run build
+```
+
+This will display a message on the frontend about a build taking place, and reload the in around 20 seconds (build ussually takes 15s).
+

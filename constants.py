@@ -3,14 +3,13 @@ from chromadb.config import Settings
 from dotenv import load_dotenv
 load_dotenv()
 from langchain_community.document_loaders import CSVLoader, PDFMinerLoader, TextLoader, UnstructuredExcelLoader, Docx2txtLoader, UnstructuredFileLoader, UnstructuredMarkdownLoader, UnstructuredHTMLLoader
-
+import json
 
 ROOT_DIRECTORY = os.path.dirname(os.path.realpath(__file__))
 # SOURCE_DIRECTORY = f"{ROOT_DIRECTORY}/SOURCE_DOCUMENTS"
 SOURCE_DIRECTORY = os.getenv("SOURCE_DIRECTORY", "/var/lib/hpchatbot/latest")
 PERSIST_DIRECTORY = f"{ROOT_DIRECTORY}/DB"
 MODELS_PATH = "./models"
-# MODEL_PATH = "./models/models--TheBloke--Mistral-7B-Instruct-v0.2-GGUF/snapshots/3a6fbf4a41a1d52e415a4958cde6856d34b2db93/mistral-7b-instruct-v0.2.Q4_K_M.gguf"
 MODEL_PATH = "./models/models--TheBloke--Mistral-7B-Instruct-v0.2-GGUF/snapshots/3a6fbf4a41a1d52e415a4958cde6856d34b2db93/mistral-7b-instruct-v0.2.Q4_K_M.gguf"
 # MODEL_PATH= "./models/models--TheBloke--Llama-2-13B-GGUF/snapshots/b106d1c018ac999af9130b83134fb6b7c5331dea/llama-2-13b.Q5_K_M.gguf"
 MODEL_NAME='mistral'
@@ -21,15 +20,22 @@ CHROMA_SETTINGS = Settings(
     is_persistent=True,
 )
 
+# MODEL LOADING
 INGEST_THREADS = int(os.getenv("INGEST_THREADS", os.cpu_count() or 8))
 CONTEXT_WINDOW_SIZE = int(os.getenv("CONTEXT_WINDOW_SIZE", 5120)) # 4096 working
-MAX_NEW_TOKENS = int(os.getenv("MAX_NEW_TOKENS", 2048))
+MAX_NEW_TOKENS = int(os.getenv("MAX_NEW_TOKENS", 2048)) # 2048 with window 4096
 TEMPERATURE=float(os.getenv("TEMPERATURE", 0.1))
 R_PENALTY=float(os.getenv("R_PENALTY", 1.1))
 N_GPU_LAYERS = int(os.getenv("N_GPU_LAYERS", -1)) # This should be 0 for CPU use
 N_BATCH = int(os.getenv("N_BATCH", 256))
 TOP_P = float(os.getenv("TOP_P", 0.9))
 TOP_K = int(os.getenv("TOP_K", 40))
+
+# EMBEDDINGS
+RETRIEVE_K_DOCS = int(os.getenv("RETRIEVE_K_DOCS", 4))
+CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", 2048))
+CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", 512))
+COLLECTION_METADATA = json.loads(os.getenv("COLLECTION_METADATA", {"hnsw:space": "cosine"}))
 
 
 # https://python.langchain.com/en/latest/_modules/langchain/document_loaders/excel.html#UnstructuredExcelLoader
@@ -47,28 +53,34 @@ DOCUMENT_MAP = {
     ".doc": Docx2txtLoader,
 }
 
+MODEL_ID = os.getenv("MODEL_ID", "TheBloke/Mistral-7B-Instruct-v0.2-GGUF")
+MODEL_BASENAME =  os.getenv("MODEL_BASENAME", "mistral-7b-instruct-v0.2.Q5_K_M.gguf")
+
 # Default Instructor Model
 # EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "BAAI/bge-small-en-v1.5") # From PrivateGPT
 # EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "hkunlp/instructor-large") # (Working) Uses 1.5 GB of VRAM (High Accuracy with lower VRAM usage)
-EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "BAAI/bge-large-en-v1.5") # Uses ~5 GB of VRAM (High Accuracy & Retrieval)
+# EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "BAAI/bge-large-en-v1.5") # Uses ~5 GB of VRAM (High Accuracy & Retrieval)
 # EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "hkunlp/instructor-xl") # Uses 5 GB of VRAM (Most Accurate of all models)
 
-# MODEL_ID= "QuantFactory/Meta-Llama-3-8B-Instruct-GGUF"
-# MODEL_BASENAME = "Meta-Llama-3-8B-Instruct.Q6_K.gguf"
+EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "Alibaba-NLP/gte-large-en-v1.5")
+# EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "allenai/longformer-base-4096")
+# EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "jinaai/jina-embeddings-v2-base-en")
+# EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "google/bigbird-pegasus-large-arxiv")
 
-####
-#### OTHER EMBEDDING MODEL OPTIONS
-####
 
 # EMBEDDING_MODEL_NAME = "hkunlp/instructor-xl" # Uses 5 GB of VRAM (Most Accurate of all models)
 # EMBEDDING_MODEL_NAME = "intfloat/e5-large-v2" # Uses 1.5 GB of VRAM (A little less accurate than instructor-large)
 # EMBEDDING_MODEL_NAME = "intfloat/e5-base-v2" # Uses 0.5 GB of VRAM (A good model for lower VRAM GPUs)
 # EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2" # Uses 0.2 GB of VRAM (Less accurate but fastest - only requires 150mb of vram) Apparently better for CPU
 
+
+
+# MODEL_ID= "QuantFactory/Meta-Llama-3-8B-Instruct-GGUF"
+# MODEL_BASENAME = "Meta-Llama-3-8B-Instruct.Q6_K.gguf"
+
 ####
 #### MULTILINGUAL EMBEDDING MODELS
 ####
-
 # EMBEDDING_MODEL_NAME = "intfloat/multilingual-e5-large" # Uses 2.5 GB of VRAM
 # EMBEDDING_MODEL_NAME = "intfloat/multilingual-e5-base" # Uses 1.2 GB of VRAM
 
@@ -124,9 +136,6 @@ EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "BAAI/bge-large-en-v1.5
 
 # MODEL_ID = os.getenv("MODEL_ID", "TheBloke/Mistral-7B-Instruct-v0.2-GGUF")
 # MODEL_BASENAME =  os.getenv("MODEL_BASENAME", "mistral-7b-instruct-v0.2.Q4_K_M.gguf")
-
-MODEL_ID = os.getenv("MODEL_ID", "TheBloke/Mistral-7B-Instruct-v0.2-GGUF")
-MODEL_BASENAME =  os.getenv("MODEL_BASENAME", "mistral-7b-instruct-v0.2.Q5_K_M.gguf")
 
 # MODEL_ID = 'bartowski/Meta-Llama-3-70B-Instruct-GGUF'
 # MODEL_BASENAME =  os.getenv("MODEL_BASENAME", "Meta-Llama-3-70B-Instruct-Q5_K_M.gguf")

@@ -35,7 +35,7 @@ TOP_K = int(os.getenv("TOP_K", 40))
 RETRIEVE_K_DOCS = int(os.getenv("RETRIEVE_K_DOCS", 4))
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", 2048))
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", 512))
-COLLECTION_METADATA = json.loads(os.getenv("COLLECTION_METADATA", {"hnsw:space": "cosine"}))
+COLLECTION_METADATA = json.loads(os.getenv("COLLECTION_METADATA", '{"hnsw:space": "cosine"}'))
 
 
 # https://python.langchain.com/en/latest/_modules/langchain/document_loaders/excel.html#UnstructuredExcelLoader

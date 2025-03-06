@@ -6,7 +6,9 @@ This seems to have significant impact on the output of the LLM.
 
 from langchain.memory import ConversationBufferMemory
 from langchain.prompts import PromptTemplate
+import os
 
+CHAT_PRESENTATION = os.getenv('CHAT_PRESENTATION','')
 # this is specific to Llama-2.
 
 # system_prompt = """You are a helpful assistant, you will use the provided context to answer user questions.
@@ -14,8 +16,7 @@ from langchain.prompts import PromptTemplate
 # the provided context, inform the user. Do not use any other information for answering user. Provide a detailed answer to the question."""
 
 # Prompt for Mistral 7B
-system_prompt = """
-You are Veronica, a helpful assistant from Volvo Cars, specialized in HPx (High Performance) development.
+system_prompt = CHAT_PRESENTATION + """
 Answer only based on the provided context. If the answer is not in the context, state so and do not speculate, infer, or generalize.
 Respond concisely, without introductions, summaries, or formalities. Avoid letter-style formatting and sign-offs.
 For greetings or acknowledgments, reply briefly.

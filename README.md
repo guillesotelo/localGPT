@@ -8,15 +8,15 @@ This is how /etc/apache2/sites-enabled/chatbot.conf (or 000-default.conf) should
 
 ```bash
 <VirtualHost 10.55.101.133:80>
-    ServerName hpchatbot.server-name.net
-    ServerAlias hpchatbot.server-name.net
-    Redirect permanent / https://hpchatbot.server-name.net/
+    ServerName server.url.com
+    ServerAlias server.url.com
+    Redirect permanent / https://server.url.com/
 </VirtualHost>
 
 <IfModule mod_ssl.c>
     <VirtualHost 10.55.101.133:443>
-        ServerName hpchatbot.server-name.net
-        ServerAdmin guillermo.sotelo@server-name.com
+        ServerName server.url.com
+        ServerAdmin mail@serverurl.com
 
         # Enable Proxying
         ProxyPreserveHost On
@@ -403,15 +403,15 @@ This is the working hpchatbot.conf in folder `/etc/apache2/sites-enabled`:
 
 ```bash
 <VirtualHost 10.55.101.133:80>
-    ServerName hpchatbot.server-name.net
-    ServerAlias hpchatbot.server-name.net
-    Redirect permanent / https://hpchatbot.server-name.net/
+    ServerName server.url.com
+    ServerAlias server.url.com
+    Redirect permanent / https://server.url.com/
 </VirtualHost>
 
 <IfModule mod_ssl.c>
     <VirtualHost 10.55.101.133:443>
-        ServerName hpchatbot.server-name.net
-        ServerAdmin guillermo.sotelo@server-name.com
+        ServerName server.url.com
+        ServerAdmin mail@serverurl.com
 
         # Enable Proxying
         ProxyPreserveHost On
@@ -455,7 +455,7 @@ This is the working hpchatbot.conf in folder `/etc/apache2/sites-enabled`:
 
 # for CGI-bin
 <VirtualHost 10.55.101.133:8080>
-    ServerAdmin guillermo.sotelo@server-name.com
+    ServerAdmin mail@serverurl.com
     DocumentRoot /var/www/html
 </VirtualHost>
 ```

@@ -124,6 +124,8 @@ celerybeat.pid
 # SageMath parsed files
 *.sage.py
 
+SERVER_SETUP.MD
+
 # Environments
 .env
 .venv

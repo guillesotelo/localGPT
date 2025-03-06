@@ -22,10 +22,13 @@ from constants import (
     SOURCE_DIRECTORY,
     CHUNK_SIZE,
     CHUNK_OVERLAP,
-    COLLECTION_METADATA
+    COLLECTION_METADATA,
+    SPLIT_SEPARATORS
 )
 
 import nltk
+
+SERVER_URL = os.getenv('SERVER_URL', '')
 
 nltk.download("punkt_tab")
 nltk.download("averaged_perceptron_tagger_eng")
@@ -132,7 +135,7 @@ def main(device_type):
                     # metadata
                     if '§' in file_name:
                         spliturl = file_name[4:].replace('¤','/').split('§') 
-                        url = '[' + spliturl[0] + '](' + 'https://hpdevp.server-name.net/' + spliturl[1].replace('.txt','.html)')
+                        url = '[' + spliturl[0] + '](' + SERVER_URL + spliturl[1].replace('.txt','.html)')
                         document.metadata["source"] = url
                     documents.append(document)
 
@@ -143,7 +146,7 @@ def main(device_type):
                     file_log("%s loading error: \n%s" % (source_file_path, ex))
 
     #text_splitter = RecursiveCharacterTextSplitter(separators=["\n\n\n","\n\n","\n"," ",".",",",""],chunk_size=512, chunk_overlap=128)
-    text_splitter = RecursiveCharacterTextSplitter(separators=["\n\n\n","\n\n", "\n", ". "],chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)
+    text_splitter = RecursiveCharacterTextSplitter(separators=SPLIT_SEPARATORS,chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)
     texts = text_splitter.split_documents(documents)
     logging.info(f"Loaded {len(documents)} documents from {SOURCE_DIRECTORY}")
     logging.info(f"Split into {len(texts)} chunks of text")

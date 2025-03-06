@@ -236,7 +236,7 @@ def prompt_route():
 
                         chain = rag_chain.pick("answer")
 
-                        for token in chain.stream({"input": f"query: {user_prompt}"}):
+                        for token in chain.stream({"input": user_prompt}):
                             if active_streams.get(stream_id, {}).get("stop"):
                                 logging.info(f"Stopping stream {stream_id} due to user request.")
                                 break  # Exit the loop if stop signal is received
@@ -605,10 +605,10 @@ def search_vectors():
     if not query:
         return jsonify({"error": "Query parameter is required"}), 400
     
-    query_embedding = EMBEDDINGS.embed_query(f"query: {query}")
+    query_embedding = EMBEDDINGS.embed_query(query)
 
     # Search ChromaDB for similar vectors
-    results =  DB._collection.query(query_embeddings=[query_embedding], n_results=10)
+    results =  DB._collection.query(query_embeddings=[query_embedding], n_results=RETRIEVE_K_DOCS)
     # Extract matched documents
 
     matching_docs = results.get("documents", [[]])[0]

@@ -17,7 +17,7 @@ CHAT_PRESENTATION = os.getenv('CHAT_PRESENTATION','')
 
 # Prompt for Mistral 7B
 system_prompt = CHAT_PRESENTATION + """
-Answer only based on the provided context. If the answer is not in the context, state so and do not speculate, infer, or generalize.
+Answer only based on the provided context. If the answer is not in the context, state so without speculating or inferring, and do not describe what the context does include.
 Respond concisely, without introductions, summaries, or formalities. Avoid letter-style formatting and sign-offs.
 For greetings or acknowledgments, reply briefly.
 Prioritize code responses in C++, then C, then Python, unless another language is requested.

@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 load_dotenv()
 from langchain_community.document_loaders import CSVLoader, PDFMinerLoader, TextLoader, UnstructuredExcelLoader, Docx2txtLoader, UnstructuredFileLoader, UnstructuredMarkdownLoader, UnstructuredHTMLLoader
 import json
+from datetime import datetime, timezone
 
 ROOT_DIRECTORY = os.path.dirname(os.path.realpath(__file__))
 # SOURCE_DIRECTORY = f"{ROOT_DIRECTORY}/SOURCE_DOCUMENTS"
@@ -13,6 +14,11 @@ MODELS_PATH = "./models"
 MODEL_PATH = "./models/models--TheBloke--Mistral-7B-Instruct-v0.2-GGUF/snapshots/3a6fbf4a41a1d52e415a4958cde6856d34b2db93/mistral-7b-instruct-v0.2.Q4_K_M.gguf"
 # MODEL_PATH= "./models/models--TheBloke--Llama-2-13B-GGUF/snapshots/b106d1c018ac999af9130b83134fb6b7c5331dea/llama-2-13b.Q5_K_M.gguf"
 MODEL_NAME='mistral'
+
+if not os.path.exists(PERSIST_DIRECTORY):
+    DB_DATE = None
+else:
+    DB_DATE = datetime.fromtimestamp(os.stat(PERSIST_DIRECTORY).st_mtime, tz=timezone.utc)
 
 # Define the Chroma settings
 CHROMA_SETTINGS = Settings(
@@ -33,9 +39,9 @@ TOP_K = int(os.getenv("TOP_K", 40))
 
 # EMBEDDINGS
 SPLIT_SEPARATORS = ["\n\n\n","\n\n", "\n", ". "]
-CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", 1024))
-CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", 512))
-RETRIEVE_K_DOCS = int(os.getenv("RETRIEVE_K_DOCS", 6))
+CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", 512))
+CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", 128))
+RETRIEVE_K_DOCS = int(os.getenv("RETRIEVE_K_DOCS", 8))
 COLLECTION_METADATA = {"hnsw:space": "cosine"}
 
 
@@ -57,17 +63,16 @@ DOCUMENT_MAP = {
 MODEL_ID = os.getenv("MODEL_ID", "TheBloke/Mistral-7B-Instruct-v0.2-GGUF")
 MODEL_BASENAME =  os.getenv("MODEL_BASENAME", "mistral-7b-instruct-v0.2.Q5_K_M.gguf")
 
-# Default Instructor Model
-# EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "BAAI/bge-small-en-v1.5") # From PrivateGPT
-# EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "hkunlp/instructor-large") # (Working) Uses 1.5 GB of VRAM (High Accuracy with lower VRAM usage)
-# EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "BAAI/bge-large-en-v1.5") # Uses ~5 GB of VRAM (High Accuracy & Retrieval)
-# EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "hkunlp/instructor-xl") # Uses 5 GB of VRAM (Most Accurate of all models)
-
-EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "Alibaba-NLP/gte-large-en-v1.5")
+EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "BAAI/bge-large-en-v1.5") # Uses ~5 GB of VRAM (High Accuracy & Retrieval)
+# EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "Alibaba-NLP/gte-large-en-v1.5")
 # EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "allenai/longformer-base-4096")
 # EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "jinaai/jina-embeddings-v2-base-en")
 # EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "google/bigbird-pegasus-large-arxiv")
 
+# Default Instructor Model
+# EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "BAAI/bge-small-en-v1.5") # From PrivateGPT
+# EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "hkunlp/instructor-large") # (Working) Uses 1.5 GB of VRAM (High Accuracy with lower VRAM usage)
+# EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "hkunlp/instructor-xl") # Uses 5 GB of VRAM (Most Accurate of all models)
 
 # EMBEDDING_MODEL_NAME = "hkunlp/instructor-xl" # Uses 5 GB of VRAM (Most Accurate of all models)
 # EMBEDDING_MODEL_NAME = "intfloat/e5-large-v2" # Uses 1.5 GB of VRAM (A little less accurate than instructor-large)

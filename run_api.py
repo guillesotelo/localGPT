@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 import json
 import sqlite3
 load_dotenv()
+import datetime
 
 import torch
 from flask import Flask, jsonify, request, Response
@@ -38,7 +39,18 @@ from constants import (
     MODEL_BASENAME, 
     MODEL_NAME, 
     RETRIEVE_K_DOCS,
-    COLLECTION_METADATA
+    COLLECTION_METADATA,
+    DB_DATE,
+    CONTEXT_WINDOW_SIZE,
+    MAX_NEW_TOKENS,
+    TEMPERATURE,
+    R_PENALTY,
+    N_BATCH,
+    TOP_P,
+    TOP_K,
+    SPLIT_SEPARATORS,
+    CHUNK_SIZE,
+    CHUNK_OVERLAP,
 )
 
 from threading import Lock
@@ -304,6 +316,12 @@ def prompt_route():
                         logging.error(f"Error during streaming: {str(e)}")
                         yield "Error occurred during streaming".encode("utf-8")
 
+        except:
+            max_tokens_message = 'Max conversation tokens reached. Please clear the conversation to continue chatting.'
+            for char in max_tokens_message:
+                yield char
+                time.sleep(0.15)
+        
         finally:
             with stream_lock:
                 active_streams.pop(stream_id, None)
@@ -600,22 +618,53 @@ def update_feedback():
 
 @app.route('/api/vectorstore_search', methods=['GET'])
 def search_vectors():
-    query = request.args.get('query', '')
+    try:
+        query = request.args.get('query', '')
 
-    if not query:
-        return jsonify({"error": "Query parameter is required"}), 400
+        if not query:
+            return jsonify({"error": "Query parameter is required"}), 400
+        
+        query_embedding = EMBEDDINGS.embed_query(query)
+
+        # Search ChromaDB for similar vectors
+        results =  DB._collection.query(query_embeddings=[query_embedding], n_results=RETRIEVE_K_DOCS)
+        # Extract matched documents
+
+        matching_docs = results.get("documents", [[]])[0]
+        found_exact = any(query.lower() in doc_text.lower() for doc_text in matching_docs)
+        
+        # Return matches as JSON
+        return jsonify({"query": query, "matches": matching_docs, "exact": found_exact})
     
-    query_embedding = EMBEDDINGS.embed_query(query)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-    # Search ChromaDB for similar vectors
-    results =  DB._collection.query(query_embeddings=[query_embedding], n_results=RETRIEVE_K_DOCS)
-    # Extract matched documents
-
-    matching_docs = results.get("documents", [[]])[0]
-    found_exact = any(query.lower() in doc_text.lower() for doc_text in matching_docs)
+@app.route('/api/get_model_settings', methods=['GET'])
+def get_model_settings():
+    try:
+        model_settings = {
+            "model_name": MODEL_NAME,
+            "db_date": DB_DATE.strftime("%a, %d %b %Y %H:%M:%S GMT") if hasattr(DB_DATE, "strftime") else str(DB_DATE),
+            "device": DEVICE_TYPE,
+            "ctx_size": CONTEXT_WINDOW_SIZE,
+            "new_tokens": MAX_NEW_TOKENS,
+            "temperature": TEMPERATURE,
+            "r_penalty": R_PENALTY,
+            "n_batch": N_BATCH,
+            "top_p": TOP_P,
+            "top_k": TOP_K,
+            "split_separators": SPLIT_SEPARATORS,
+            "chunk_size": CHUNK_SIZE,
+            "chunk_overlap": CHUNK_OVERLAP,
+            "retrieve_k": RETRIEVE_K_DOCS,
+            "collection_meta": COLLECTION_METADATA,
+            "model_basename": MODEL_BASENAME,
+            "embeddings": EMBEDDING_MODEL_NAME
+        }
+        return jsonify(model_settings)
     
-    # Return matches as JSON
-    return jsonify({"query": query, "matches": matching_docs, "exact": found_exact})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 #  ---------- END OF API ROUTES ----------

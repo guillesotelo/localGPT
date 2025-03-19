@@ -9,9 +9,12 @@ import stat
 import click
 import torch
 from langchain.docstore.document import Document
-from langchain.text_splitter import Language, RecursiveCharacterTextSplitter
+# from langchain.text_splitter import Language, RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import Chroma
 from utils import get_embeddings
+from chromadb import PersistentClient
+from utils import process_document_with_tables
 
 from constants import (
     CHROMA_SETTINGS,
@@ -45,16 +48,24 @@ def file_log(logentry):
 
 
 def remove_readonly(func, path, _):
-    """Clear read-only permissions and retry deletion."""
-    os.chmod(path, stat.S_IWRITE)
+    """Clear read-only flag and retry deletion."""
+    os.chmod(path, 0o777)
     func(path)
 
-
-def force_delete_chroma_db(db_path, max_retries=3, retry_delay=2):
+def force_delete_chroma_db(db_path, collection_name="langchain", max_retries=3, retry_delay=2):
+    """Forcefully delete the ChromaDB collection and database directory."""
     if os.path.exists(db_path):
         logging.info(f"Attempting to delete ChromaDB at: {db_path}")
 
-        # Kill any process using ChromaDB
+        # Step 1: Connect to ChromaDB and delete the collection
+        try:
+            client = PersistentClient(path=db_path)
+            client.delete_collection(collection_name)
+            logging.info(f"Deleted ChromaDB collection: {collection_name}")
+        except Exception as e:
+            logging.warning(f"Could not delete collection {collection_name}: {e}")
+
+        # Step 2: Kill any process using ChromaDB
         for proc in psutil.process_iter(['pid', 'name', 'open_files']):
             try:
                 if proc.info['open_files']:
@@ -65,8 +76,8 @@ def force_delete_chroma_db(db_path, max_retries=3, retry_delay=2):
                             proc.wait(timeout=3)
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
-        
-        # Retry deletion with permissions fix
+
+        # Step 3: Retry deletion with permissions fix
         for attempt in range(max_retries):
             try:
                 shutil.rmtree(db_path, onerror=remove_readonly)
@@ -80,7 +91,6 @@ def force_delete_chroma_db(db_path, max_retries=3, retry_delay=2):
         logging.error(f"Failed to delete DB folder after {max_retries} attempts. Delete it manually.")
     else:
         logging.info("ChromaDB folder does not exist.")
-
 
 @click.command()
 @click.option(
@@ -132,6 +142,10 @@ def main(device_type):
                     loader = loader_class(source_file_path)
                     document = loader.load()[0]
 
+                    # Parse tables
+                    # processed_text = process_document_with_tables(document.page_content, table_format="key-value", file_name=file_name)
+                    # document.page_content = processed_text
+
                     # metadata
                     if '§' in file_name:
                         spliturl = file_name[4:].replace('¤','/').split('§') 
@@ -145,8 +159,7 @@ def main(device_type):
                 except Exception as ex:
                     file_log("%s loading error: \n%s" % (source_file_path, ex))
 
-    #text_splitter = RecursiveCharacterTextSplitter(separators=["\n\n\n","\n\n","\n"," ",".",",",""],chunk_size=512, chunk_overlap=128)
-    text_splitter = RecursiveCharacterTextSplitter(separators=SPLIT_SEPARATORS,chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)
+    text_splitter = RecursiveCharacterTextSplitter(separators=SPLIT_SEPARATORS, chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)
     texts = text_splitter.split_documents(documents)
     logging.info(f"Loaded {len(documents)} documents from {SOURCE_DIRECTORY}")
     logging.info(f"Split into {len(texts)} chunks of text")

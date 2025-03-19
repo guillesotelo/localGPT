@@ -51,6 +51,8 @@ from constants import (
     SPLIT_SEPARATORS,
     CHUNK_SIZE,
     CHUNK_OVERLAP,
+    FETCH_K_DOCS,
+    LAMBDA_MULT
 )
 
 from threading import Lock
@@ -58,6 +60,8 @@ from utils import get_embeddings
 # For enterprise use
 import ssl
 
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 ssl._create_default_https_context = ssl._create_unverified_context
 
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(filename)s:%(lineno)s - %(message)s", level=logging.DEBUG)
@@ -105,6 +109,10 @@ retriever = DB.as_retriever(
     search_type="similarity",
     similarity_metric="cosine" 
 )
+
+# Print Chunk sizes in DB
+# collection = DB._collection.get()
+# print([len(doc) for doc in collection['documents']])
 
 # Load the model with streaming support
 LLM = load_model(device_type=DEVICE_TYPE, model_id=MODEL_ID, model_basename=MODEL_BASENAME)
@@ -157,6 +165,8 @@ def prompt_route():
     use_history = request.form.get("use_history")
     stream_id = int(request.form.get("stream_id", str(int(time.time() * 1000))))
     stop = request.form.get("stop", "false").lower() == "true"
+    error = ''
+    logging.info(f"\nUser Prompt: {user_prompt}")
 
     if stop:
         with stream_lock:
@@ -187,17 +197,15 @@ def prompt_route():
     def generate_stream():
         try:
             with active_streams[stream_id]["lock"]:
-                prompt, memory = get_prompt_template(
-                    promptTemplate_type=MODEL_NAME, user_prompt=user_prompt, use_context=use_context
-                )
-
                 # Use documents context
                 if use_context:
                     print('\n')
                     print(f"\n\n*** Using chat with CONTEXT ***\n")
                     print('\n')
-                    print(f"\nUser Prompt: {user_prompt}")
-                    print('\n')
+
+                    prompt, memory = get_prompt_template(
+                        promptTemplate_type=MODEL_NAME, user_prompt=user_prompt, use_context=use_context
+                    )
 
                     ctx_system_prompt = f"""
                         {system_prompt}
@@ -274,9 +282,17 @@ def prompt_route():
                         # If sources don't enter the threshold then we check if the slopoe 
                         # between the first two is steep enough to return the first one.
                         if not filtered_results:
-                            sorted_results = sorted(retriever_results_with_scores, key=lambda x: x[1], reverse=True)
+                            seen = set()
+                            unique_results = []
+                            
+                            for doc, score in retriever_results_with_scores:
+                                doc_source = doc.metadata.get("source", "Unknown Source")
+                                if doc_source not in seen:
+                                    seen.add(doc_source)
+                                    unique_results.append((doc, score))
+                            sorted_results = sorted(unique_results, key=lambda x: x[1], reverse=True)
 
-                            if len(sorted_results) > 1 and (sorted_results[0][1] - sorted_results[1][1]) >= 0.05:
+                            if len(sorted_results) > 1 and (sorted_results[0][1] - sorted_results[1][1]) >= 0.025:
                                 retriever_results = [sorted_results[0][0]]
 
                         sources = []
@@ -301,6 +317,9 @@ def prompt_route():
                 # Chat with LLM only
                 else:
                     print(f"\n\n*** Using direct chat with LLM ***\n")
+                    prompt, memory = get_prompt_template(
+                        promptTemplate_type=MODEL_NAME, user_prompt=user_prompt, use_context=use_context
+                    )
                     input_data = {"context": None, "question": user_prompt, "history": use_history}
 
                     try:
@@ -316,11 +335,15 @@ def prompt_route():
                         logging.error(f"Error during streaming: {str(e)}")
                         yield "Error occurred during streaming".encode("utf-8")
 
-        except:
-            max_tokens_message = 'Max conversation tokens reached. Please clear the conversation to continue chatting.'
+        except Exception as e:
+            error = str(e)
+            logging.info(f">>> An error occurred while generating the reponse: {error}")
+            response.headers["error"] = error
+            max_tokens_message = f"\nOops! It looks like I'm having a bit of a technical hiccup: {error}"
+            yield '\n'
             for char in max_tokens_message:
+                time.sleep(0.02)
                 yield char
-                time.sleep(0.15)
         
         finally:
             with stream_lock:

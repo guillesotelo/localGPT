@@ -4,11 +4,9 @@ import click
 import torch
 import utils
 from langchain.chains import RetrievalQA
-from langchain_community.embeddings import HuggingFaceInstructEmbeddings
-from langchain.llms import HuggingFacePipeline
 from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler  # for streaming response
 from queue import Queue
-from langchain.llms import LlamaCpp
+from langchain_community.llms import LlamaCpp
 from prompt_template_utils import get_prompt_template
 from utils import get_embeddings
 from dotenv import load_dotenv
@@ -49,12 +47,14 @@ from constants import (
 import requests
 from huggingface_hub import configure_http_backend
 
+
 def backend_factory() -> requests.Session:
     session = requests.Session()
     session.verify = False
     return session
 
 configure_http_backend(backend_factory=backend_factory)
+
 
 def load_model(device_type, model_id, model_basename=None, LOGGING=logging):
     LOGGING.info(f"Loading Model: {model_id}, on: {device_type}...")

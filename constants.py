@@ -7,8 +7,8 @@ import json
 from datetime import datetime, timezone
 
 ROOT_DIRECTORY = os.path.dirname(os.path.realpath(__file__))
-# SOURCE_DIRECTORY = f"{ROOT_DIRECTORY}/SOURCE_DOCUMENTS"
-SOURCE_DIRECTORY = os.getenv("SOURCE_DIRECTORY", "/var/lib/hpchatbot/latest")
+SOURCE_DIRECTORY = f"{ROOT_DIRECTORY}/SOURCE_DOCUMENTS"
+# SOURCE_DIRECTORY = os.getenv("SOURCE_DIRECTORY", "/var/lib/hpchatbot/latest")
 PERSIST_DIRECTORY = f"{ROOT_DIRECTORY}/DB"
 MODELS_PATH = "./models"
 MODEL_PATH = "./models/models--TheBloke--Mistral-7B-Instruct-v0.2-GGUF/snapshots/3a6fbf4a41a1d52e415a4958cde6856d34b2db93/mistral-7b-instruct-v0.2.Q4_K_M.gguf"
@@ -28,8 +28,8 @@ CHROMA_SETTINGS = Settings(
 
 # MODEL LOADING
 INGEST_THREADS = int(os.getenv("INGEST_THREADS", os.cpu_count() or 8))
-CONTEXT_WINDOW_SIZE = int(os.getenv("CONTEXT_WINDOW_SIZE", 5120)) # 4096 working
-MAX_NEW_TOKENS = int(os.getenv("MAX_NEW_TOKENS", 2048)) # 2048 with window 4096
+CONTEXT_WINDOW_SIZE = int(os.getenv("CONTEXT_WINDOW_SIZE", 4096)) # 4096 working, 5120 too
+MAX_NEW_TOKENS = int(os.getenv("MAX_NEW_TOKENS", 1024)) # 2048 with window 4096
 TEMPERATURE=float(os.getenv("TEMPERATURE", 0.1))
 R_PENALTY=float(os.getenv("R_PENALTY", 1.1))
 N_GPU_LAYERS = int(os.getenv("N_GPU_LAYERS", -1)) # This should be 0 for CPU use
@@ -38,10 +38,12 @@ TOP_P = float(os.getenv("TOP_P", 0.9))
 TOP_K = int(os.getenv("TOP_K", 40))
 
 # EMBEDDINGS
-SPLIT_SEPARATORS = ["\n\n\n","\n\n", "\n", ". "]
-CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", 512))
-CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", 128))
-RETRIEVE_K_DOCS = int(os.getenv("RETRIEVE_K_DOCS", 8))
+SPLIT_SEPARATORS = ["\n\n", "\n", ". ", " ", ""]
+CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", 1536))
+CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", 384))
+FETCH_K_DOCS = int(os.getenv("FETCH_K_DOCS", 50))
+LAMBDA_MULT = float(os.getenv("LAMBDA_MULT", 0.25))
+RETRIEVE_K_DOCS = int(os.getenv("RETRIEVE_K_DOCS", 6))
 COLLECTION_METADATA = {"hnsw:space": "cosine"}
 
 
@@ -63,7 +65,10 @@ DOCUMENT_MAP = {
 MODEL_ID = os.getenv("MODEL_ID", "TheBloke/Mistral-7B-Instruct-v0.2-GGUF")
 MODEL_BASENAME =  os.getenv("MODEL_BASENAME", "mistral-7b-instruct-v0.2.Q5_K_M.gguf")
 
-EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "BAAI/bge-large-en-v1.5") # Uses ~5 GB of VRAM (High Accuracy & Retrieval)
+EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "BAAI/bge-m3") # size 8192
+# EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "intfloat/e5-large-v2") # size 1024
+
+# EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "BAAI/bge-large-en-v1.5") # Uses ~5 GB of VRAM (High Accuracy & Retrieval)
 # EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "Alibaba-NLP/gte-large-en-v1.5")
 # EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "allenai/longformer-base-4096")
 # EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "jinaai/jina-embeddings-v2-base-en")

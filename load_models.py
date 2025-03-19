@@ -6,7 +6,7 @@ if sys.platform != "darwin":
     from auto_gptq import AutoGPTQForCausalLM
 
 from huggingface_hub import hf_hub_download
-from langchain.llms import LlamaCpp
+from langchain_community.llms import LlamaCpp
 from transformers import AutoModelForCausalLM, AutoTokenizer, LlamaForCausalLM, LlamaTokenizer, BitsAndBytesConfig
 
 from constants import CONTEXT_WINDOW_SIZE, MAX_NEW_TOKENS, MODELS_PATH, N_BATCH, N_GPU_LAYERS

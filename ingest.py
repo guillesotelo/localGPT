@@ -23,6 +23,7 @@ from constants import (
     INGEST_THREADS,
     PERSIST_DIRECTORY,
     SOURCE_DIRECTORY,
+    AUX_DOCS,
     CHUNK_SIZE,
     CHUNK_OVERLAP,
     COLLECTION_METADATA,
@@ -126,46 +127,58 @@ def main(device_type):
     force_delete_chroma_db(PERSIST_DIRECTORY)
 
     # Load documents and split in chunks
-    logging.info(f"Loading documents from {SOURCE_DIRECTORY}...")
+    logging.info(f"Loading documents from {SOURCE_DIRECTORY} and {AUX_DOCS}...")
 
-    # Loads all documents from the source documents directory, including nested folders
+    # List to hold documents
     documents = []
-    for root, _, files in os.walk(SOURCE_DIRECTORY):
-        for file_name in sorted(files):
-            file_extension = os.path.splitext(file_name)[1]
-            if file_extension == '.txt':
-                print("Importing: " + file_name)
-                source_file_path = os.path.join(root, file_name)
-                try:
-                    file_log(source_file_path + " loaded.")
-                    loader_class = DOCUMENT_MAP.get('.txt')
-                    loader = loader_class(source_file_path)
-                    document = loader.load()[0]
 
-                    # Parse tables
-                    # processed_text = process_document_with_tables(document.page_content, table_format="key-value", file_name=file_name)
-                    # document.page_content = processed_text
+    # Function to load documents from a given directory
+    def load_documents_from_directory(directory):
+        for root, _, files in os.walk(directory):
+            for file_name in sorted(files):
+                file_extension = os.path.splitext(file_name)[1]
+                if file_extension == '.txt':
+                    print(f"Importing: {file_name}")
+                    source_file_path = os.path.join(root, file_name)
+                    try:
+                        file_log(f"{source_file_path} loaded.")
+                        loader_class = DOCUMENT_MAP.get('.txt')
+                        loader = loader_class(source_file_path)
+                        document = loader.load()[0]
 
-                    # metadata
-                    if '§' in file_name:
-                        spliturl = file_name[4:].replace('¤','/').split('§') 
-                        url = '[' + spliturl[0] + '](' + SERVER_URL + spliturl[1].replace('.txt','.html)')
-                        document.metadata["source"] = url
-                    documents.append(document)
+                        # Parse tables (if needed)
+                        # processed_text = process_document_with_tables(document.page_content, table_format="key-value", file_name=file_name)
+                        # document.page_content = processed_text
 
-                    if len(documents) == 0:
-                        exit()
+                        # metadata
+                        if '§' in file_name:
+                            spliturl = file_name[4:].replace('¤', '/').split('§')
+                            url = f"[{spliturl[0]}]({SERVER_URL}{spliturl[1].replace('.txt', '.html')})"
+                            document.metadata["source"] = url
 
-                except Exception as ex:
-                    file_log("%s loading error: \n%s" % (source_file_path, ex))
+                        documents.append(document)
 
+                    except Exception as ex:
+                        file_log(f"{source_file_path} loading error: \n{ex}")
+
+    # Load documents from both source directories
+    load_documents_from_directory(SOURCE_DIRECTORY)
+    load_documents_from_directory(AUX_DOCS)
+
+    if len(documents) == 0:
+        exit()
+
+    # Split documents into text chunks
     text_splitter = RecursiveCharacterTextSplitter(separators=SPLIT_SEPARATORS, chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)
     texts = text_splitter.split_documents(documents)
-    logging.info(f"Loaded {len(documents)} documents from {SOURCE_DIRECTORY}")
+
+    logging.info(f"Loaded {len(documents)} documents from {SOURCE_DIRECTORY} and {AUX_DOCS}")
     logging.info(f"Split into {len(texts)} chunks of text")
 
+    # Generate embeddings
     embeddings = get_embeddings(device_type)
 
+    # Create the Chroma DB from documents
     db = Chroma.from_documents(
         texts,
         embeddings,
@@ -175,6 +188,7 @@ def main(device_type):
     )
 
     logging.info(f"*** Successfully loaded embeddings from {EMBEDDING_MODEL_NAME} ***")
+
 
 
 if __name__ == "__main__":

@@ -7,8 +7,9 @@ import json
 from datetime import datetime, timezone
 
 ROOT_DIRECTORY = os.path.dirname(os.path.realpath(__file__))
-SOURCE_DIRECTORY = f"{ROOT_DIRECTORY}/SOURCE_DOCUMENTS"
-# SOURCE_DIRECTORY = os.getenv("SOURCE_DIRECTORY", "/var/lib/hpchatbot/latest")
+# SOURCE_DIRECTORY = f"{ROOT_DIRECTORY}/SOURCE_DOCUMENTS"
+SOURCE_DIRECTORY = os.getenv("SOURCE_DIRECTORY", "/var/lib/hpchatbot/latest")
+AUX_DOCS = '/chatbot/AUX_DOCS'
 PERSIST_DIRECTORY = f"{ROOT_DIRECTORY}/DB"
 MODELS_PATH = "./models"
 MODEL_PATH = "./models/models--TheBloke--Mistral-7B-Instruct-v0.2-GGUF/snapshots/3a6fbf4a41a1d52e415a4958cde6856d34b2db93/mistral-7b-instruct-v0.2.Q4_K_M.gguf"
@@ -39,11 +40,11 @@ TOP_K = int(os.getenv("TOP_K", 40))
 
 # EMBEDDINGS
 SPLIT_SEPARATORS = ["\n\n", "\n", ". ", " ", ""]
-CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", 1536))
-CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", 384))
+CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", 1280))
+CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", 320))
 FETCH_K_DOCS = int(os.getenv("FETCH_K_DOCS", 50))
 LAMBDA_MULT = float(os.getenv("LAMBDA_MULT", 0.25))
-RETRIEVE_K_DOCS = int(os.getenv("RETRIEVE_K_DOCS", 6))
+RETRIEVE_K_DOCS = int(os.getenv("RETRIEVE_K_DOCS", 7))
 COLLECTION_METADATA = {"hnsw:space": "cosine"}
 
 

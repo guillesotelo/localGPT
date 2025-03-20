@@ -57,6 +57,7 @@ from constants import (
 
 from threading import Lock
 from utils import get_embeddings
+import re
 # For enterprise use
 import ssl
 
@@ -269,7 +270,8 @@ def prompt_route():
                             logging.info(f"\n")
                             logging.info(f"Document: {doc.metadata.get('source', 'Unknown Source')} | Score: {score}")
 
-                        SIMILARITY_THRESHOLD = 0.71
+                        # SIMILARITY_THRESHOLD = 0.71
+                        SIMILARITY_THRESHOLD = 0.6
 
                         filtered_results = sorted(
                             [(doc, score) for doc, score in retriever_results_with_scores if score >= SIMILARITY_THRESHOLD],
@@ -292,7 +294,8 @@ def prompt_route():
                                     unique_results.append((doc, score))
                             sorted_results = sorted(unique_results, key=lambda x: x[1], reverse=True)
 
-                            if len(sorted_results) > 1 and (sorted_results[0][1] - sorted_results[1][1]) >= 0.025:
+                            # if len(sorted_results) > 1 and (sorted_results[0][1] - sorted_results[1][1]) >= 0.025:
+                            if len(sorted_results) > 1 and (sorted_results[0][1] - sorted_results[1][1]) >= 0.1:
                                 retriever_results = [sorted_results[0][0]]
 
                         sources = []
@@ -339,7 +342,7 @@ def prompt_route():
             error = str(e)
             logging.info(f">>> An error occurred while generating the reponse: {error}")
             response.headers["error"] = error
-            max_tokens_message = f"\nOops! It looks like I'm having a bit of a technical hiccup: {error}"
+            max_tokens_message = f"\nOops! It looks like I'm having a bit of a technical hiccup: {error}\nPlease clear the chat context or reframe your question."
             yield '\n'
             for char in max_tokens_message:
                 time.sleep(0.02)
@@ -685,6 +688,24 @@ def get_model_settings():
             "embeddings": EMBEDDING_MODEL_NAME
         }
         return jsonify(model_settings)
+    
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    
+
+@app.route('/api/get_app_version', methods=['GET'])
+def get_app_version():
+    try:
+       with open('/chatbot/source/ui/src/constants/app.ts', 'r') as file:
+        first_line = file.readline().strip()
+
+        # Define a regular expression to match the version number (a float number)
+        match = re.search(r"export const APP_VERSION = '([0-9]*\.?[0-9]+)'", first_line)
+        
+        if match:
+            return jsonify({"app_version": match.group(1)})  # Return as JSON
+        else:
+            return jsonify({"error": "Version not found"}), 404
     
     except Exception as e:
         return jsonify({"error": str(e)}), 500

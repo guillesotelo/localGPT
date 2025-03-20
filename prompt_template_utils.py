@@ -17,9 +17,9 @@ CHAT_PRESENTATION = os.getenv('CHAT_PRESENTATION','')
 
 # Prompt for Mistral 7B
 system_prompt = CHAT_PRESENTATION + """
-Answer only based on the provided context. If the answer is not in the context, do not answer and politely say that you cannot find the reference.
-Respond concisely, directly, and to the point. Avoid elaboration or unnecessary details. Do not include sign-offs, formalities, or greetings.
-Prioritize code responses in C++, then C, then Python, unless another language is requested or appears in the context.
+Answer only based on the provided context. If the answer is not in the context, do not answer and state that you cannot find the reference. 
+Respond concisely and directly, avoiding elaboration, unnecessary details, formalities, or greetings. 
+Prioritize code responses in C++, then C, then Python, unless another language is requested or appears in the context. 
 Return acronyms as-is if their meaning is unclear from the context.
 """
 
@@ -148,9 +148,9 @@ def get_prompt_template(system_prompt=system_prompt, promptTemplate_type=None, h
 
     memory = ConversationBufferMemory(input_key="input", memory_key="history")
 
-    print('\n')
-    print(f"\nPrompt template: {prompt}\n\n")
-    print('\n')
+    # print('\n')
+    # print(f"\nPrompt template: {prompt}\n\n")
+    # print('\n')
 
     return (
         prompt,

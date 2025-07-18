@@ -11,6 +11,7 @@ import torch
 from langchain.docstore.document import Document
 # from langchain.text_splitter import Language, RecursiveCharacterTextSplitter
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_text_splitters.markdown import ExperimentalMarkdownSyntaxTextSplitter
 from langchain_community.vectorstores import Chroma
 from utils import get_embeddings
 from chromadb import PersistentClient
@@ -171,6 +172,10 @@ def main(device_type):
     # Split documents into text chunks
     text_splitter = RecursiveCharacterTextSplitter(separators=SPLIT_SEPARATORS, chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)
     texts = text_splitter.split_documents(documents)
+    # text_splitter = ExperimentalMarkdownSyntaxTextSplitter(
+    #     return_each_line=True
+    # )
+    # texts = text_splitter.split(documents)
 
     logging.info(f"Loaded {len(documents)} documents from {SOURCE_DIRECTORY} and {AUX_DOCS}")
     logging.info(f"Split into {len(texts)} chunks of text")

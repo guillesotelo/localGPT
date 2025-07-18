@@ -132,6 +132,9 @@ def require_token(func):
         if not token or token != API_TOKEN:
             return jsonify({"error": "Unauthorized"}), 401
         return func(*args, **kwargs)
+    
+    # Changing the wrapper name so it doesn't throw errors when called more than once
+    wrapper.__name__ = func.__name__
     return wrapper
 
 
@@ -142,6 +145,8 @@ DB_FILE = "/chatbot/db/chatbot.db"
 def init_db():
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
+        
+        # Feedback table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS feedback (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -149,6 +154,18 @@ def init_db():
                 name TEXT,
                 comments TEXT,
                 messages TEXT
+            )
+        """)
+        
+        # Analytics table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS analytics (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                message_count INTEGER,
+                token_count INTEGER,
+                duration_seconds INTEGER
             )
         """)
         conn.commit()
@@ -262,6 +279,7 @@ def prompt_route():
                                 logging.info(f"Stopping stream {stream_id} due to user request.")
                                 break  # Exit the loop if stop signal is received
                             yield token
+                                
                         print("\n\n")
 
                         retriever_results_with_scores = DB.similarity_search_with_relevance_scores(user_prompt, k=RETRIEVE_K_DOCS)
@@ -342,11 +360,11 @@ def prompt_route():
             error = str(e)
             logging.info(f">>> An error occurred while generating the reponse: {error}")
             response.headers["error"] = error
-            max_tokens_message = f"\nOops! It looks like I'm having a bit of a technical hiccup: {error}\nPlease clear the chat context or reframe your question."
+            error_message = f"\nOops! It looks like I'm having a bit of a technical hiccup: {error}\nPlease clear the chat context or reframe your question."
             yield '\n'
-            for char in max_tokens_message:
-                time.sleep(0.02)
-                yield char
+            for word in error_message.split(' '):
+                time.sleep(0.1)
+                yield f"{word} "
         
         finally:
             with stream_lock:
@@ -660,10 +678,61 @@ def search_vectors():
         found_exact = any(query.lower() in doc_text.lower() for doc_text in matching_docs)
         
         # Return matches as JSON
-        return jsonify({"query": query, "matches": matching_docs, "exact": found_exact})
+        return jsonify({"query": query, "matches": matching_docs, "exact": found_exact, "results": results})
     
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    
+
+@app.route("/api/save_analytics", methods=["POST"])
+def save_analytics():
+    try:
+        data = request.get_json()
+
+        if "session_id" not in data:
+            return jsonify({"error": "Missing required fields: session_id"}), 400
+
+        # Set default values for optional fields
+        token_count = data.get("token_count", 0)
+
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO analytics (
+                    session_id, 
+                    message_count, 
+                    token_count, 
+                    duration_seconds
+                ) VALUES (?, ?, ?, ?)
+            """, (
+                data["session_id"],
+                data["message_count"],
+                token_count,
+                data["duration_seconds"]
+            ))
+            conn.commit()
+
+        return jsonify({"message": "Analytics saved successfully"}), 201
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    
+    
+@app.route("/api/get_analytics", methods=["GET"])
+@require_token
+def get_analytics():
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+
+            cursor.execute("SELECT * FROM analytics")  # Fetch all columns
+            analytic_list = [dict(row) for row in cursor.fetchall()]  # Convert rows to dicts
+
+        return jsonify(analytic_list), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 @app.route('/api/get_model_settings', methods=['GET'])
 def get_model_settings():

@@ -39,7 +39,8 @@ TOP_P = float(os.getenv("TOP_P", 0.9))
 TOP_K = int(os.getenv("TOP_K", 40))
 
 # EMBEDDINGS
-SPLIT_SEPARATORS = ["\n\n", "\n", ". ", " ", ""]
+# SPLIT_SEPARATORS = ["\n\n", "\n", ". ", " ", ""]
+SPLIT_SEPARATORS = ["\n", ". ", " ", ""]
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", 1280))
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", 320))
 FETCH_K_DOCS = int(os.getenv("FETCH_K_DOCS", 50))
@@ -63,8 +64,10 @@ DOCUMENT_MAP = {
     ".doc": Docx2txtLoader,
 }
 
-MODEL_ID = os.getenv("MODEL_ID", "TheBloke/Mistral-7B-Instruct-v0.2-GGUF")
-MODEL_BASENAME =  os.getenv("MODEL_BASENAME", "mistral-7b-instruct-v0.2.Q5_K_M.gguf")
+# MODEL_ID = os.getenv("MODEL_ID", "TheBloke/Mistral-7B-Instruct-v0.2-GGUF")
+# MODEL_BASENAME =  os.getenv("MODEL_BASENAME", "mistral-7b-instruct-v0.2.Q5_K_M.gguf")
+MODEL_ID = os.getenv("MODEL_ID", "bartowski/Mistral-7B-Instruct-v0.3-GGUF")
+MODEL_BASENAME =  os.getenv("MODEL_BASENAME", "Mistral-7B-Instruct-v0.3-Q5_K_M.gguf")
 
 EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "BAAI/bge-m3") # size 8192
 # EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "intfloat/e5-large-v2") # size 1024

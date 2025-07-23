@@ -132,13 +132,16 @@ def main(device_type):
 
     # List to hold documents
     documents = []
+    total_textfile_count = 0
 
     # Function to load documents from a given directory
     def load_documents_from_directory(directory):
+        total_textfiles = 0
         for root, _, files in os.walk(directory):
             for file_name in sorted(files):
                 file_extension = os.path.splitext(file_name)[1]
                 if file_extension == '.txt':
+                    total_textfiles += 1
                     print(f"Importing: {file_name}")
                     source_file_path = os.path.join(root, file_name)
                     try:
@@ -156,15 +159,18 @@ def main(device_type):
                             spliturl = file_name[4:].replace('¤', '/').split('§')
                             url = f"[{spliturl[0]}]({SERVER_URL}{spliturl[1].replace('.txt', '.html')})"
                             document.metadata["source"] = url
-
-                        documents.append(document)
+                            
+                        doc_len = len(document.page_content)
+                        if doc_len > 300:
+                            documents.append(document)
 
                     except Exception as ex:
                         file_log(f"{source_file_path} loading error: \n{ex}")
+        return total_textfiles
 
     # Load documents from both source directories
-    load_documents_from_directory(SOURCE_DIRECTORY)
-    load_documents_from_directory(AUX_DOCS)
+    total_textfile_count += load_documents_from_directory(SOURCE_DIRECTORY)
+    total_textfile_count += load_documents_from_directory(AUX_DOCS)
 
     if len(documents) == 0:
         exit()
@@ -177,7 +183,7 @@ def main(device_type):
     # )
     # texts = text_splitter.split(documents)
 
-    logging.info(f"Loaded {len(documents)} documents from {SOURCE_DIRECTORY} and {AUX_DOCS}")
+    logging.info(f"Loaded {len(documents)}/{total_textfile_count} documents from {SOURCE_DIRECTORY} and {AUX_DOCS}")
     logging.info(f"Split into {len(texts)} chunks of text")
 
     # Generate embeddings

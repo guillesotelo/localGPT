@@ -1,5 +1,5 @@
 import sys
-
+import os
 import torch
 
 if sys.platform != "darwin":
@@ -36,6 +36,10 @@ def load_quantized_model_gguf_ggml(model_id, model_basename, device_type, loggin
 
     try:
         logging.info("Using Llamacpp for GGUF/GGML quantized models")
+        if os.path.exists(model_basename):
+            logging.info(f"Using local model file: {model_basename}")
+            return model_basename, None  # tokenizer will be handled sep
+    
         model_path = hf_hub_download(
             repo_id=model_id,
             filename=model_basename,

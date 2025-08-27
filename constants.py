@@ -31,9 +31,9 @@ MAX_NEW_TOKENS = int(os.getenv("MAX_NEW_TOKENS", 1024)) # 2048 with window 4096
 TEMPERATURE=float(os.getenv("TEMPERATURE", 0.1))
 R_PENALTY=float(os.getenv("R_PENALTY", 1.1))
 N_GPU_LAYERS = int(os.getenv("N_GPU_LAYERS", -1)) # This should be 0 for CPU use
-N_BATCH = int(os.getenv("N_BATCH", 256))
+N_BATCH = int(os.getenv("N_BATCH", 16))
 TOP_P = float(os.getenv("TOP_P", 0.9))
-TOP_K = int(os.getenv("TOP_K", 40))
+TOP_K = int(os.getenv("TOP_K", 20))
 
 # EMBEDDINGS
 # SPLIT_SEPARATORS = ["\n\n", "\n", ". ", " ", ""]
@@ -65,9 +65,19 @@ DOCUMENT_MAP = {
 # MODEL_ID = "openai/gpt-oss-20b"
 # MODEL_BASENAME = None   # <- not needed for Transformers
 
-MODEL_NAME='mistral'
-MODEL_ID = os.getenv("MODEL_ID", "bartowski/Mistral-7B-Instruct-v0.3-GGUF")
-MODEL_BASENAME =  os.getenv("MODEL_BASENAME", "Mistral-7B-Instruct-v0.3-Q5_K_M.gguf")
+# MODEL_NAME='mistral'
+# MODEL_ID = os.getenv("MODEL_ID", "bartowski/Mistral-7B-Instruct-v0.3-GGUF")
+# MODEL_BASENAME =  os.getenv("MODEL_BASENAME", "Mistral-7B-Instruct-v0.3-Q5_K_M.gguf")
+
+MODEL_NAME='qwen'
+MODEL_ID = os.getenv("MODEL_ID", "Qwen/Qwen2.5-7B-Instruct-GGUF")
+MODEL_BASENAME = "/chatbot/source/api/models/models--Qwen--Qwen2.5-7B-Instruct-GGUF/qwen2.5-7b-instruct-q5_k_m.gguf"
+# Using this script to download both files that will be merge on model execution by HuggingFace CLI:
+# huggingface-cli download Qwen/Qwen2.5-7B-Instruct-GGUF \
+#     --include "qwen2.5-7b-instruct-q5_k_m*.gguf" \
+#     --local-dir models \
+#     --local-dir-use-symlinks False
+
 
 EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "BAAI/bge-m3") # size 8192
 # EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "intfloat/e5-large-v2") # size 1024

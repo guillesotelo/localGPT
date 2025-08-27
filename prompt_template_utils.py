@@ -124,6 +124,49 @@ def get_prompt_template(system_prompt=system_prompt, model_name=None, history=Fa
                     + "\n\nUser: {input}\nAnswer:"
                 )
                 prompt = PromptTemplate(input_variables=["input"], template=prompt_template)
+                
+    elif model_name == "qwen":
+        B_SYS, E_SYS = "<|im_start|>system\n", "<|im_end|>\n"
+        B_USER, E_USER = "<|im_start|>user\n", "<|im_end|>\n"
+        B_ASSISTANT, E_ASSISTANT = "<|im_start|>assistant\n", "<|im_end|>\n" #E_ASSISTANT is not necessary
+
+        if history:
+            # Concatenate history as plain text before the current user input
+            prompt_template = (
+                B_SYS
+                + system_prompt
+                + E_SYS
+                + "{history}\n"  # history should already include <|im_start|>user/assistant<|im_end|> blocks
+                + B_USER
+                + "Context: {context}\n"
+                + "{input}"
+                + E_USER
+                + B_ASSISTANT
+            )
+            prompt = PromptTemplate(input_variables=["history", "context", "input"], template=prompt_template)
+        else:
+            if use_context:
+                prompt_template = (
+                B_SYS
+                + system_prompt
+                + E_SYS
+                + B_USER
+                + "Context: {context}\n"
+                + "{input}"
+                + E_USER
+                + B_ASSISTANT
+            )
+            else:
+                prompt_template = (
+                    B_SYS
+                    + system_prompt
+                    + E_SYS
+                    + B_USER
+                    + "{input}"
+                    + E_USER
+                    + B_ASSISTANT
+                )
+            prompt = PromptTemplate(input_variables=["context", "input"], template=prompt_template)
 
     else:
         # change this based on the model you have selected.

@@ -235,6 +235,45 @@ If the error is about MaxRetryError for a certain host like `cdn-lfs-us-1.hf.co`
 os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 ```
 
+### GPT-OSS Setup (optional)
+
+To use GPT-OSS models like gpt-oss-20b from OpenAI, we are going to branch the setup in order to make the LLM work on our CUDA drivers.
+
+First, we create a new conda env gptoss:
+
+```bash
+conda create -n gptoss python=3.10 -y
+```
+
+Then we activate it with `conda activate gptoss` and install new deps:
+
+```bash
+# 1. Torch with CUDA 12.1 wheel, which has support for pytorch stable (newer versions of cuda aren't yet officially maintained)
+pip install torch==2.3.1+cu121 torchvision==0.18.1+cu121 torchaudio==2.3.1+cu121 \
+  --extra-index-url https://download.pytorch.org/whl/cu121
+
+# 2. The rest
+pip install -r gptoss-requirements.txt
+```
+
+Install triton for quantizing for 16GB VRAM:
+
+```bash
+pip install git+https://github.com/triton-lang/triton.git@main#subdirectory=python/triton_kernels
+```
+
+Then update transformers from dev source:
+
+```bash
+pip install git+https://github.com/huggingface/transformers.git
+```
+
+Install triton from source:
+
+```bash
+pip install git+https://github.com/huggingface/transformers triton==3.4 kernels
+```
+
 ## Frontend
 
 ### Run Node app

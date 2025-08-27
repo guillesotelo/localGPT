@@ -166,10 +166,38 @@ def main(device_type):
 
                     except Exception as ex:
                         file_log(f"{source_file_path} loading error: \n{ex}")
+                        
+                if file_extension == '.md' or file_extension == '.rst':
+                    total_textfiles += 1
+                    print(f"Importing: {file_name}")
+                    source_file_path = os.path.join(root, file_name)
+                    try:
+                        file_log(f"{source_file_path} loaded.")
+                        loader_class = DOCUMENT_MAP.get('.md')
+                        loader = loader_class(source_file_path)
+                        document = loader.load()[0]
+
+                        # Parse tables (if needed)
+                        # processed_text = process_document_with_tables(document.page_content, table_format="key-value", file_name=file_name)
+                        # document.page_content = processed_text
+
+                        # metadata
+                        if '§' in file_name:
+                            spliturl = file_name[4:].replace('¤', '/').split('§')
+                            url = f"[{spliturl[0]}]({SERVER_URL}{spliturl[1].replace('.md', '.html')})"
+                            document.metadata["source"] = url
+                            
+                        doc_len = len(document.page_content)
+                        if doc_len > 300:
+                            documents.append(document)
+
+                    except Exception as ex:
+                        file_log(f"{source_file_path} loading error: \n{ex}")
         return total_textfiles
 
     # Load documents from both source directories
     total_textfile_count += load_documents_from_directory(SOURCE_DIRECTORY)
+    # total_textfile_count += load_documents_from_directory('/chatbot/testinput')
     total_textfile_count += load_documents_from_directory(AUX_DOCS)
 
     if len(documents) == 0:

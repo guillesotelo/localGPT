@@ -35,15 +35,8 @@ contextualize_q_system_prompt = (
 )
 
 
-def get_chat_prompt(prompt):
-    return f"""
-            {system_prompt}
-            {prompt}
-            """
-
-
-def get_prompt_template(system_prompt=system_prompt, promptTemplate_type=None, history=False, use_context=True, user_prompt=''):
-    if promptTemplate_type == "llama":
+def get_prompt_template(system_prompt=system_prompt, model_name=None, history=False, use_context=True, user_prompt=''):
+    if model_name == "llama":
         B_INST, E_INST = "[INST]", "[/INST]"
         B_SYS, E_SYS = "<<SYS>>\n", "\n<</SYS>>\n\n"
         SYSTEM_PROMPT = B_SYS + system_prompt + E_SYS
@@ -62,7 +55,7 @@ def get_prompt_template(system_prompt=system_prompt, promptTemplate_type=None, h
             prompt_template = B_INST + SYSTEM_PROMPT + instruction + E_INST
             prompt = PromptTemplate(input_variables=["context", "input"], template=prompt_template)
 
-    elif promptTemplate_type == "llama3":
+    elif model_name == "llama3":
 
         B_INST, E_INST = "<|start_header_id|>user<|end_header_id|>", "<|eot_id|>"
         B_SYS, E_SYS = "<|begin_of_text|><|start_header_id|>system<|end_header_id|> ", "<|eot_id|>"
@@ -83,19 +76,13 @@ def get_prompt_template(system_prompt=system_prompt, promptTemplate_type=None, h
             prompt_template = SYSTEM_PROMPT + B_INST + instruction + ASSISTANT_INST
             prompt = PromptTemplate(input_variables=["context", "input"], template=prompt_template)
 
-    elif promptTemplate_type == "mistral":
+    elif model_name == "mistral":
         B_INST, E_INST = "[INST] ", " [/INST]"
-        BOG, EOG = "<s> ", " </s>"
         if history:
             prompt_template = (
                 B_INST
-                + BOG
                 + system_prompt
-                + EOG
-                + """
-    
-            Context: {history} \n {context}
-            User: {input}"""
+                + "\n\nHistory: {history} Context: {context}\nUser: {input} "
                 + E_INST
             )
             prompt = PromptTemplate(input_variables=["history", "context", "input"], template=prompt_template)
@@ -103,29 +90,41 @@ def get_prompt_template(system_prompt=system_prompt, promptTemplate_type=None, h
             if use_context:    
                 prompt_template = (
                     B_INST
-                    + BOG
                     + system_prompt
-                    + EOG
-                    + """
-                
-                Context: {context}
-                User: {input}"""
+                    + "\n\nContext: {context}\nUser: {input} "
                     + E_INST
                 )
                 prompt = PromptTemplate(input_variables=["context", "input"], template=prompt_template)
             else:
                 prompt_template = (
                     B_INST
-                    + BOG
                     + system_prompt
-                    + EOG
-                    + """
-                
-                User: {input}"""
+                    + "User: {input} "
                     + E_INST
                 )
                 prompt = PromptTemplate(input_variables=["context", "input"], template=prompt_template)
-                # prompt = get_chat_prompt(user_prompt)
+                
+    elif model_name == "gpt-oss":
+        if history:
+            prompt_template = (
+                system_prompt
+                + "\n\nContext: {history} \n {context}\nUser: {input}\nAnswer:"
+            )
+            prompt = PromptTemplate(input_variables=["history", "context", "input"], template=prompt_template)
+        else:
+            if use_context:
+                prompt_template = (
+                    system_prompt
+                    + "\n\nContext: {context}\nUser: {input}\nAnswer (only output the final answer, nothing else):"
+                )
+                prompt = PromptTemplate(input_variables=["context", "input"], template=prompt_template)
+            else:
+                prompt_template = (
+                    system_prompt
+                    + "\n\nUser: {input}\nAnswer:"
+                )
+                prompt = PromptTemplate(input_variables=["input"], template=prompt_template)
+
     else:
         # change this based on the model you have selected.
         if history:
@@ -151,9 +150,7 @@ def get_prompt_template(system_prompt=system_prompt, promptTemplate_type=None, h
 
     memory = ConversationBufferMemory(input_key="input", memory_key="history")
 
-    # print('\n')
-    # print(f"\nPrompt template: {prompt}\n\n")
-    # print('\n')
+    print(f"\nPrompt template model: {model_name}\n\n")
 
     return (
         prompt,

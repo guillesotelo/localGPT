@@ -1,0 +1,46 @@
+# Core API
+flask==3.0.3
+flask-cors==4.0.1
+python-dotenv==1.0.1
+werkzeug==3.0.3
+click==8.1.7
+gunicorn
+
+# LangChain (core + community split)
+langchain==0.2.12
+langchain-community==0.2.11
+langchain-core>=0.2.27,<0.3.0
+
+# Transformers + Hugging Face hub
+transformers==4.45.2
+huggingface-hub==0.24.6
+accelerate==0.33.0
+safetensors==0.4.3
+
+# GPTQ quantization + adapters
+auto-gptq==0.7.1
+peft==0.11.1
+
+# Torch (CUDA 12.1 build – works with CUDA 12.5 driver)
+torch==2.3.1+cu121 --extra-index-url https://download.pytorch.org/whl/cu121
+torchvision==0.18.1+cu121 --extra-index-url https://download.pytorch.org/whl/cu121
+torchaudio==2.3.1+cu121 --extra-index-url https://download.pytorch.org/whl/cu121
+
+# ChromaDB (vectorstore)
+chromadb==0.5.5
+
+# Embeddings / Sentence transformers
+sentence-transformers==2.7.0
+
+# Utilities
+urllib3==2.2.2
+requests==2.32.3
+
+# Optional: for llama.cpp fallback (GGUF/GGML)
+llama-cpp-python==0.2.78
+
+# Quantization support (for 4-bit / 8-bit GPT-OSS models)
+bitsandbytes==0.43.1
+
+# For logging / SSL handling
+certifi==2024.7.4

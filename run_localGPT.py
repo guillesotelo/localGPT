@@ -7,6 +7,8 @@ from langchain.chains import RetrievalQA
 from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler  # for streaming response
 from queue import Queue
 from langchain_community.llms import LlamaCpp
+import threading
+
 from prompt_template_utils import get_prompt_template
 from utils import get_embeddings
 from dotenv import load_dotenv
@@ -16,7 +18,9 @@ load_dotenv()
 from langchain_community.vectorstores import Chroma
 from transformers import (
     GenerationConfig,
-    pipeline,
+    AutoModelForCausalLM, 
+    AutoTokenizer,
+    pipeline
 )
 
 from load_models import (
@@ -31,7 +35,6 @@ from constants import (
     PERSIST_DIRECTORY,
     MODEL_ID,
     MODEL_BASENAME,
-    MODEL_PATH,
     MAX_NEW_TOKENS,
     MODELS_PATH,
     CHROMA_SETTINGS,
@@ -46,7 +49,7 @@ from constants import (
 
 import requests
 from huggingface_hub import configure_http_backend
-
+from gpt_oss_wrapper import GPTOSSWrapper
 
 def backend_factory() -> requests.Session:
     session = requests.Session()
@@ -55,10 +58,27 @@ def backend_factory() -> requests.Session:
 
 configure_http_backend(backend_factory=backend_factory)
 
-
 def load_model(device_type, model_id, model_basename=None, LOGGING=logging):
     LOGGING.info(f"Loading Model: {model_id}, on: {device_type}...")
     # LOGGING.info("############ This action can take a few minutes!")
+    
+    if "gpt-oss" in model_id.lower():
+        LOGGING.info("Loading GPT-OSS with HuggingFace + streaming...")
+
+        tokenizer = AutoTokenizer.from_pretrained(model_id, cache_dir="/mnt/huggingface_cache")
+        max_memory = {0: "14GiB", "cpu": "48GiB"}
+        
+        model = AutoModelForCausalLM.from_pretrained(
+            model_id,
+            torch_dtype="auto",
+            device_map={"": 0},
+            use_safetensors=True,
+            trust_remote_code=True,
+        )
+
+        generation_config = GenerationConfig(max_new_tokens=MAX_NEW_TOKENS, temperature=TEMPERATURE, top_p=TOP_P, repetition_penalty=R_PENALTY)
+        llm = GPTOSSWrapper(model, tokenizer, generation_config)
+        return llm
 
     # Uncomment to download based on constants config
     if model_basename:
@@ -97,7 +117,7 @@ def load_model(device_type, model_id, model_basename=None, LOGGING=logging):
 
     try:
         llm = LlamaCpp(
-            model_path=model_path or MODEL_PATH,
+            model_path=model_path,
             max_tokens=MAX_NEW_TOKENS,
             temperature=TEMPERATURE,
             n_ctx=CONTEXT_WINDOW_SIZE,
@@ -114,7 +134,7 @@ def load_model(device_type, model_id, model_basename=None, LOGGING=logging):
         )
     except KeyError as e:
         LOGGING.error(f"KeyError in LlamaCpp initialization: {e}")
-        raise ValueError(f"Failed to initialize model with model_path: {MODEL_PATH}")
+        raise ValueError(f"Failed to initialize model with model_path: {model_path}")
 
     LOGGING.info(f"*** Local LLM successfully loaded on {device_type} ***")
     
@@ -252,7 +272,7 @@ def load_model(device_type, model_id, model_basename=None, LOGGING=logging):
 #     return local_llm
 
 
-def retrieval_qa_pipline(device_type, use_history, promptTemplate_type="llama"):
+def retrieval_qa_pipline(device_type, use_history, model_name="llama"):
     """
     Initializes and returns a retrieval-based Question Answering (QA) pipeline.
 
@@ -295,7 +315,7 @@ def retrieval_qa_pipline(device_type, use_history, promptTemplate_type="llama"):
     retriever = db.as_retriever()
 
     # get the prompt template and memory if set by the user.
-    prompt, memory = get_prompt_template(promptTemplate_type=promptTemplate_type, history=use_history)
+    prompt, memory = get_prompt_template(model_name=model_name, history=use_history)
 
     # load the llm pipeline
     llm = load_model(device_type, model_id=MODEL_ID, model_basename=MODEL_BASENAME, LOGGING=logging)
@@ -408,7 +428,7 @@ def main(device_type, show_sources, use_history, model_type, save_qa):
     if not os.path.exists(MODELS_PATH):
         os.mkdir(MODELS_PATH)
 
-    qa = retrieval_qa_pipline(device_type, use_history, promptTemplate_type=model_type)
+    qa = retrieval_qa_pipline(device_type, use_history, model_name=model_type)
     # Interactive questions and answers
     while True:
         query = input("\nEnter a query: ")

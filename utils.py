@@ -3,10 +3,14 @@ import csv
 from datetime import datetime
 import re
 import logging
-from constants import EMBEDDING_MODEL_NAME
+from constants import EMBEDDING_MODEL_NAME, MODEL_ID
 from langchain_community.embeddings import HuggingFaceInstructEmbeddings
 from langchain_community.embeddings import HuggingFaceBgeEmbeddings
 from langchain_community.embeddings import HuggingFaceEmbeddings
+
+from transformers import AutoModel, AutoTokenizer
+import torch
+
 
 def log_to_csv(question, answer):
 
@@ -42,7 +46,6 @@ def get_embeddings(device_type="cuda"):
 
     elif "bge" in EMBEDDING_MODEL_NAME:
         encode_kwargs = {'normalize_embeddings': True} # set True to compute cosine similarity
-        
         return HuggingFaceBgeEmbeddings(
             model_name=EMBEDDING_MODEL_NAME,
             model_kwargs={"device": device_type},

@@ -12,9 +12,6 @@ SOURCE_DIRECTORY = os.getenv("SOURCE_DIRECTORY", "/var/lib/hpchatbot/latest")
 AUX_DOCS = '/chatbot/AUX_DOCS'
 PERSIST_DIRECTORY = f"{ROOT_DIRECTORY}/DB"
 MODELS_PATH = "./models"
-MODEL_PATH = "./models/models--TheBloke--Mistral-7B-Instruct-v0.2-GGUF/snapshots/3a6fbf4a41a1d52e415a4958cde6856d34b2db93/mistral-7b-instruct-v0.2.Q4_K_M.gguf"
-# MODEL_PATH= "./models/models--TheBloke--Llama-2-13B-GGUF/snapshots/b106d1c018ac999af9130b83134fb6b7c5331dea/llama-2-13b.Q5_K_M.gguf"
-MODEL_NAME='mistral'
 
 if not os.path.exists(PERSIST_DIRECTORY):
     DB_DATE = None
@@ -40,9 +37,9 @@ TOP_K = int(os.getenv("TOP_K", 40))
 
 # EMBEDDINGS
 # SPLIT_SEPARATORS = ["\n\n", "\n", ". ", " ", ""]
-SPLIT_SEPARATORS = ["\n", ". ", " ", ""]
-CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", 1280))
-CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", 320))
+SPLIT_SEPARATORS = ["\n\n", "\n", ". "]
+CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", 1280)) # 1280
+CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", 320)) # 320
 FETCH_K_DOCS = int(os.getenv("FETCH_K_DOCS", 50))
 LAMBDA_MULT = float(os.getenv("LAMBDA_MULT", 0.25))
 RETRIEVE_K_DOCS = int(os.getenv("RETRIEVE_K_DOCS", 7))
@@ -64,8 +61,11 @@ DOCUMENT_MAP = {
     ".doc": Docx2txtLoader,
 }
 
-# MODEL_ID = os.getenv("MODEL_ID", "TheBloke/Mistral-7B-Instruct-v0.2-GGUF")
-# MODEL_BASENAME =  os.getenv("MODEL_BASENAME", "mistral-7b-instruct-v0.2.Q5_K_M.gguf")
+# MODEL_NAME='gpt-oss'
+# MODEL_ID = "openai/gpt-oss-20b"
+# MODEL_BASENAME = None   # <- not needed for Transformers
+
+MODEL_NAME='mistral'
 MODEL_ID = os.getenv("MODEL_ID", "bartowski/Mistral-7B-Instruct-v0.3-GGUF")
 MODEL_BASENAME =  os.getenv("MODEL_BASENAME", "Mistral-7B-Instruct-v0.3-Q5_K_M.gguf")
 

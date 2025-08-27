@@ -26,10 +26,10 @@ from streaming_chain import StreamingChain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables.history import RunnableWithMessageHistory
-
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
 from langchain_core.runnables import RunnableParallel
+from transformers import GenerationConfig
 
 from constants import (
     CHROMA_SETTINGS, 
@@ -113,11 +113,14 @@ retriever = DB.as_retriever(
 
 # Print Chunk sizes in DB
 # collection = DB._collection.get()
+# print('\n')
+# print('Collection lengths:\n')
 # print([len(doc) for doc in collection['documents']])
+# print('\n')
 
 # Load the model with streaming support
 LLM = load_model(device_type=DEVICE_TYPE, model_id=MODEL_ID, model_basename=MODEL_BASENAME)
-logging.info("LLM loaded.")
+logging.info("LLM ready in API.")
 
 
 app = Flask(__name__)
@@ -217,12 +220,13 @@ def prompt_route():
             with active_streams[stream_id]["lock"]:
                 # Use documents context
                 if use_context:
-                    print('\n')
-                    print(f"\n\n*** Using chat with CONTEXT ***\n")
-                    print('\n')
+                    print('\n \n')
+                    print('*** Using chat with CONTEXT ***')
+                    print(f'User prompt: {user_prompt}')
+                    print('\n \n')
 
                     prompt, memory = get_prompt_template(
-                        promptTemplate_type=MODEL_NAME, user_prompt=user_prompt, use_context=use_context
+                        model_name=MODEL_NAME, user_prompt=user_prompt, use_context=use_context
                     )
 
                     ctx_system_prompt = f"""
@@ -257,7 +261,7 @@ def prompt_route():
                                 logging.info(f"Stopping stream {stream_id} due to user request.")
                                 break  # Exit the loop if stop signal is received
                             yield token
-                        print("\n\n")
+                        print('\n \n')
 
                     else:
                         ctx_prompt = ChatPromptTemplate.from_messages(
@@ -266,7 +270,6 @@ def prompt_route():
                                 ("human", "{input}"),
                             ]
                         )
-
 
                         # Build stream chain
                         question_answer_chain = create_stuff_documents_chain(LLM, prompt)
@@ -280,12 +283,12 @@ def prompt_route():
                                 break  # Exit the loop if stop signal is received
                             yield token
                                 
-                        print("\n\n")
-
+                        print('\n \n')
+                            
+                        # ----- Source generation -----
                         retriever_results_with_scores = DB.similarity_search_with_relevance_scores(user_prompt, k=RETRIEVE_K_DOCS)
 
                         for doc, score in retriever_results_with_scores:
-                            logging.info(f"\n")
                             logging.info(f"Document: {doc.metadata.get('source', 'Unknown Source')} | Score: {score}")
 
                         # SIMILARITY_THRESHOLD = 0.71
@@ -339,7 +342,7 @@ def prompt_route():
                 else:
                     print(f"\n\n*** Using direct chat with LLM ***\n")
                     prompt, memory = get_prompt_template(
-                        promptTemplate_type=MODEL_NAME, user_prompt=user_prompt, use_context=use_context
+                        model_name=MODEL_NAME, user_prompt=user_prompt, use_context=use_context
                     )
                     input_data = {"context": None, "question": user_prompt, "history": use_history}
 
@@ -358,7 +361,7 @@ def prompt_route():
 
         except Exception as e:
             error = str(e)
-            logging.info(f">>> An error occurred while generating the reponse: {error}")
+            logging.info(f">>> An error occurred while generating the reponse: {error}", exc_info=True)
             response.headers["error"] = error
             error_message = f"\nOops! It looks like I'm having a bit of a technical hiccup: {error}\nPlease clear the chat context or reframe your question."
             yield '\n'
@@ -424,7 +427,7 @@ def prompt_route_test():
                     sources.append(doc.metadata.get("source", "Unknown Source"))
                 
                 prompt, memory = get_prompt_template(
-                    promptTemplate_type=MODEL_NAME, user_prompt=user_prompt, use_context=use_context
+                    model_name=MODEL_NAME, user_prompt=user_prompt, use_context=use_context
                 )
                 question_answer_chain = create_stuff_documents_chain(LLM, prompt)
                 rag_chain = create_retrieval_chain(retriever, question_answer_chain)

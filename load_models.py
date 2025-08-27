@@ -166,11 +166,6 @@ def load_full_model(model_id, model_basename, device_type, logging):
             low_cpu_mem_usage=True,
             cache_dir=MODELS_PATH,
             trust_remote_code=True,  # set these if you are using NVIDIA GPU
-            quantization_config=bnb_config
-           # load_in_4bit=True,
-           # bnb_4bit_quant_type="nf4",
-           # bnb_4bit_compute_dtype=torch.float16,
-           # max_memory={0: "15GB"},  # Uncomment this line with you encounter CUDA out of memory errors
         )
 
         model.tie_weights()

@@ -36,13 +36,12 @@ TOP_P = float(os.getenv("TOP_P", 0.9))
 TOP_K = int(os.getenv("TOP_K", 20))
 
 # EMBEDDINGS
-# SPLIT_SEPARATORS = ["\n\n", "\n", ". ", " ", ""]
-SPLIT_SEPARATORS = ["\n\n", "\n", ". "]
-CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", 1280)) # 1280
-CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", 320)) # 320
-FETCH_K_DOCS = int(os.getenv("FETCH_K_DOCS", 50))
+SPLIT_SEPARATORS = ["\n\n", "\n", ". ", " ", ""]
+CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", 2048)) # 1280
+CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", 512)) # 320
+FETCH_K_DOCS = int(os.getenv("FETCH_K_DOCS", 20)) # 50
 LAMBDA_MULT = float(os.getenv("LAMBDA_MULT", 0.25))
-RETRIEVE_K_DOCS = int(os.getenv("RETRIEVE_K_DOCS", 7))
+RETRIEVE_K_DOCS = int(os.getenv("RETRIEVE_K_DOCS", 6)) # 7
 COLLECTION_METADATA = {"hnsw:space": "cosine"}
 
 

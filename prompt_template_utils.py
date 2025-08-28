@@ -21,9 +21,9 @@ You must follow these rules:
 
 - Only answer questions using the provided context. If the answer cannot be found clearly and explicitly in the context, respond with: "This question is outside the scope of our documentation."
 - Do not guess, infer, or make assumptions based on loosely related information.
-- Keep responses concise and direct. Do not include greetings, formalities, or unnecessary elaboration.
+- Keep responses direct. Do not include greetings, formalities, or unnecessary elaboration.
 - Prefer code responses in this order: C++, then C, then Python, unless another language is explicitly mentioned or appears in the context.
-- If an acronym is used and its meaning is not defined in the context, return it as-is without interpretation.
+- If an acronym is mentioned and its meaning is not defined in the context, return it as-is without interpretation.
 """
 
 contextualize_q_system_prompt = (

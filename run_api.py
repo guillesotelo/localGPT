@@ -168,7 +168,8 @@ def init_db():
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
                 message_count INTEGER,
                 token_count INTEGER,
-                duration_seconds INTEGER
+                duration_seconds INTEGER,
+                prompt TEXT
             )
         """)
         conn.commit()
@@ -184,6 +185,7 @@ def prompt_route():
     user_prompt = request.form.get("user_prompt")
     use_context = request.form.get("use_context")
     use_history = request.form.get("use_history")
+    first_query = request.form.get("first_query")
     stream_id = int(request.form.get("stream_id", str(int(time.time() * 1000))))
     stop = request.form.get("stop", "false").lower() == "true"
     error = ''
@@ -221,8 +223,11 @@ def prompt_route():
                 # Use documents context
                 if use_context:
                     print('\n \n')
+                    print('\n \n')
                     print('*** Using chat with CONTEXT ***')
                     print(f'User prompt: {user_prompt}')
+                    print(f"It's first query: {'yes' if first_query else 'no'}")
+                    print('\n \n')
                     print('\n \n')
 
                     prompt, memory = get_prompt_template(
@@ -283,7 +288,8 @@ def prompt_route():
                                 break  # Exit the loop if stop signal is received
                             yield token
                                 
-                        print('\n \n')
+                        logging.info('\n \n')
+                        logging.info('\n \n')
                             
                         # ----- Source generation -----
                         retriever_results_with_scores = DB.similarity_search_with_relevance_scores(user_prompt, k=RETRIEVE_K_DOCS)
@@ -292,7 +298,7 @@ def prompt_route():
                             logging.info(f"Document: {doc.metadata.get('source', 'Unknown Source')} | Score: {score}")
 
                         # SIMILARITY_THRESHOLD = 0.71
-                        SIMILARITY_THRESHOLD = 0.6
+                        SIMILARITY_THRESHOLD = 0.5 if first_query else 0.6
 
                         filtered_results = sorted(
                             [(doc, score) for doc, score in retriever_results_with_scores if score >= SIMILARITY_THRESHOLD],
@@ -320,6 +326,7 @@ def prompt_route():
                                 retriever_results = [sorted_results[0][0]]
 
                         sources = []
+                        sources_returned = 'no'
                         unique_sources = set()
                         for doc in retriever_results:
                             source = doc.metadata.get("source", "Unknown Source")
@@ -335,7 +342,11 @@ def prompt_route():
                             for i, source in enumerate(sources[:4]):
                                 unreleased_mark = ' (unreleased)' if 'UNRELEASED' in source else ''
                                 time.sleep(0.15)  # Simulating streaming effect
+                                sources_returned = 'yes'
                                 yield f"\n- {source}{unreleased_mark}"
+                        logging.info('\n \n')
+                        logging.info(f"Sources returned: {sources_returned}")
+                        logging.info('\n \n')
 
 
                 # Chat with LLM only
@@ -705,19 +716,22 @@ def save_analytics():
                     session_id, 
                     message_count, 
                     token_count, 
-                    duration_seconds
-                ) VALUES (?, ?, ?, ?)
+                    duration_seconds,
+                    prompt
+                ) VALUES (?, ?, ?, ?, ?)
             """, (
                 data["session_id"],
                 data["message_count"],
                 token_count,
-                data["duration_seconds"]
+                data["duration_seconds"],
+                data["prompt"]
             ))
             conn.commit()
 
         return jsonify({"message": "Analytics saved successfully"}), 201
 
     except Exception as e:
+        logging.info(f">>> An error occurred while saving analytics: {str(e)}", exc_info=True)
         return jsonify({"error": str(e)}), 500
     
     

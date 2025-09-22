@@ -29,7 +29,9 @@ from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
 from langchain_core.runnables import RunnableParallel
+from langchain.retrievers import BM25Retriever
 from transformers import GenerationConfig
+import pickle
 
 from constants import (
     CHROMA_SETTINGS, 
@@ -54,6 +56,8 @@ from constants import (
     FETCH_K_DOCS,
     LAMBDA_MULT
 )
+
+from hybrid_retriever import HybridRetriever
 
 from threading import Lock
 from utils import get_embeddings
@@ -105,10 +109,24 @@ DB = Chroma(
     collection_metadata=COLLECTION_METADATA
 )
 
+# Semantic retriever
 retriever = DB.as_retriever(
-    search_kwargs={"k": RETRIEVE_K_DOCS},
     search_type="similarity",
     similarity_metric="cosine" 
+)
+
+# Full-text retriever
+with open("bm25_docs.pkl", "rb") as f:
+    bm25_docs = pickle.load(f)
+
+bm25_retriever = BM25Retriever.from_documents(bm25_docs)
+
+# Hybrid retriever
+hybrid_retriever = HybridRetriever(
+    bm25_retriever=bm25_retriever,
+    semantic_retriever=retriever,
+    k_bm25=3,
+    k_semantic=RETRIEVE_K_DOCS,
 )
 
 # Print Chunk sizes in DB
@@ -278,7 +296,7 @@ def prompt_route():
 
                         # Build stream chain
                         question_answer_chain = create_stuff_documents_chain(LLM, prompt)
-                        rag_chain = create_retrieval_chain(retriever, question_answer_chain)
+                        rag_chain = create_retrieval_chain(hybrid_retriever, question_answer_chain)
 
                         chain = rag_chain.pick("answer")
 
@@ -335,10 +353,9 @@ def prompt_route():
                                 sources.append(source)
 
                         if sources:
-                            if len(sources) > 1:
-                                yield f"\n <br/><br/><strong>Sources:</strong>"
-                            else:
-                                yield f"\n <br/><br/><strong>Source:</strong>"
+                            source_title = "Sources:" if len(sources) > 1 else "Source:"
+                            yield f"\n <br/><br/><strong>{source_title}</strong>"
+                            
                             for i, source in enumerate(sources[:4]):
                                 unreleased_mark = ' (unreleased)' if 'UNRELEASED' in source else ''
                                 time.sleep(0.15)  # Simulating streaming effect

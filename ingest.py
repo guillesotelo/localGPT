@@ -16,6 +16,7 @@ from langchain_community.vectorstores import Chroma
 from utils import get_embeddings
 from chromadb import PersistentClient
 from utils import process_document_with_tables
+import pickle
 
 from constants import (
     CHROMA_SETTINGS,
@@ -206,6 +207,11 @@ def main(device_type):
     # Split documents into text chunks
     text_splitter = RecursiveCharacterTextSplitter(separators=SPLIT_SEPARATORS, chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)
     texts = text_splitter.split_documents(documents)
+    
+    # Save docs for full-text search (bm25 retriever)
+    with open("bm25_docs.pkl", "wb") as f:
+        pickle.dump(texts, f)
+        
     # text_splitter = ExperimentalMarkdownSyntaxTextSplitter(
     #     return_each_line=True
     # )

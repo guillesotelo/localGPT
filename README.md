@@ -54,7 +54,7 @@ Some manual work could be necessary to fix some of them. Take a look at possible
 Default values from constants.py are for GPU. Create an .env file with the values you want for CPU which will overwrite defaults, for example you can start with:
 
 ```bash
-   RETRIEVE_K_DOCS=5
+   SEMANTIC_K_DOCS=5
    CHUNK_SIZE=1000
    CHUNK_OVERLAP=200
    CONTEXT_WINDOW_SIZE=1024

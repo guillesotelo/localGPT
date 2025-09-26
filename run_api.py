@@ -40,7 +40,8 @@ from constants import (
     MODEL_ID, 
     MODEL_BASENAME, 
     MODEL_NAME, 
-    RETRIEVE_K_DOCS,
+    SEMANTIC_K_DOCS,
+    FULLTEXT_K_DOCS,
     COLLECTION_METADATA,
     DB_DATE,
     CONTEXT_WINDOW_SIZE,
@@ -125,8 +126,8 @@ bm25_retriever = BM25Retriever.from_documents(bm25_docs)
 hybrid_retriever = HybridRetriever(
     bm25_retriever=bm25_retriever,
     semantic_retriever=retriever,
-    k_bm25=3,
-    k_semantic=RETRIEVE_K_DOCS,
+    k_bm25=FULLTEXT_K_DOCS,
+    k_semantic=SEMANTIC_K_DOCS,
 )
 
 # Print Chunk sizes in DB
@@ -166,7 +167,7 @@ DB_FILE = "/chatbot/db/chatbot.db"
 def init_db():
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
-        
+
         # Feedback table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS feedback (
@@ -177,19 +178,27 @@ def init_db():
                 messages TEXT
             )
         """)
-        
+
         # Analytics table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS analytics (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id TEXT,
+                session_id TEXT UNIQUE,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
                 message_count INTEGER,
                 token_count INTEGER,
                 duration_seconds INTEGER,
-                prompt TEXT
+                prompt TEXT,
+                messages TEXT
             )
         """)
+
+        # Ensure UNIQUE index exists (safe for existing DBs)
+        cursor.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_analytics_session_id
+            ON analytics(session_id)
+        """)
+        
         conn.commit()
         
 init_db()
@@ -310,7 +319,7 @@ def prompt_route():
                         logging.info('\n \n')
                             
                         # ----- Source generation -----
-                        retriever_results_with_scores = DB.similarity_search_with_relevance_scores(user_prompt, k=RETRIEVE_K_DOCS)
+                        retriever_results_with_scores = DB.similarity_search_with_relevance_scores(user_prompt, k=SEMANTIC_K_DOCS)
 
                         for doc, score in retriever_results_with_scores:
                             logging.info(f"Document: {doc.metadata.get('source', 'Unknown Source')} | Score: {score}")
@@ -391,7 +400,7 @@ def prompt_route():
             error = str(e)
             logging.info(f">>> An error occurred while generating the reponse: {error}", exc_info=True)
             response.headers["error"] = error
-            error_message = f"\nOops! It looks like I'm having a bit of a technical hiccup: {error}\nPlease clear the chat context or reframe your question."
+            error_message = f"\nOops! It looks like I'm having a bit of a technical hiccup: {error}\nPlease try again or start a new chat."
             yield '\n'
             for word in error_message.split(' '):
                 time.sleep(0.1)
@@ -691,18 +700,26 @@ def update_feedback():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route('/api/vectorstore_search', methods=['GET'])
+@app.route('/api/vectorstore_search', methods=['POST'])
 def search_vectors():
     try:
-        query = request.args.get('query', '')
+        data = request.get_json()
+        query = data['query']
+        full_text = data['fulltext']
+        k = int(data['k']) if data['k'] else 0
 
         if not query:
             return jsonify({"error": "Query parameter is required"}), 400
         
+        if full_text:
+            bm25_docs = bm25_retriever.get_relevant_documents(query)[:k or FULLTEXT_K_DOCS]
+            bm25_docs_dicts = [doc.page_content for doc in bm25_docs]
+            return jsonify({"query": query, "matches": bm25_docs_dicts})
+        
         query_embedding = EMBEDDINGS.embed_query(query)
 
         # Search ChromaDB for similar vectors
-        results =  DB._collection.query(query_embeddings=[query_embedding], n_results=RETRIEVE_K_DOCS)
+        results =  DB._collection.query(query_embeddings=[query_embedding], n_results=k or SEMANTIC_K_DOCS)
         # Extract matched documents
 
         matching_docs = results.get("documents", [[]])[0]
@@ -712,6 +729,8 @@ def search_vectors():
         return jsonify({"query": query, "matches": matching_docs, "exact": found_exact, "results": results})
     
     except Exception as e:
+        error = str(e)
+        logging.info(f">>> An error occurred while searching on vectorstore: {error}", exc_info=True)
         return jsonify({"error": str(e)}), 500
     
 
@@ -734,14 +753,22 @@ def save_analytics():
                     message_count, 
                     token_count, 
                     duration_seconds,
-                    prompt
-                ) VALUES (?, ?, ?, ?, ?)
+                    prompt,
+                    messages
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(session_id) DO UPDATE SET
+                message_count = excluded.message_count,
+                token_count = excluded.token_count,
+                duration_seconds = excluded.duration_seconds,
+                prompt = excluded.prompt,
+                messages = excluded.messages
             """, (
                 data["session_id"],
                 data["message_count"],
                 token_count,
                 data["duration_seconds"],
-                data["prompt"]
+                data["prompt"],
+                json.dumps(data["messages"])
             ))
             conn.commit()
 
@@ -785,7 +812,7 @@ def get_model_settings():
             "split_separators": SPLIT_SEPARATORS,
             "chunk_size": CHUNK_SIZE,
             "chunk_overlap": CHUNK_OVERLAP,
-            "retrieve_k": RETRIEVE_K_DOCS,
+            "retrieve_k": SEMANTIC_K_DOCS,
             "collection_meta": COLLECTION_METADATA,
             "model_basename": MODEL_BASENAME,
             "embeddings": EMBEDDING_MODEL_NAME

@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 ROOT_DIRECTORY = os.path.dirname(os.path.realpath(__file__))
 # SOURCE_DIRECTORY = f"{ROOT_DIRECTORY}/SOURCE_DOCUMENTS"
 SOURCE_DIRECTORY = os.getenv("SOURCE_DIRECTORY", "/var/lib/hpchatbot/latest")
-AUX_DOCS = '/chatbot/AUX_DOCS'
+AUX_DOCS = '/chatbot/source/api/AUX_DOCS'
 PERSIST_DIRECTORY = f"{ROOT_DIRECTORY}/DB"
 MODELS_PATH = "./models"
 

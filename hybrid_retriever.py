@@ -14,8 +14,8 @@ class HybridRetriever(BaseRetriever):
         bm25_docs = self.bm25_retriever.get_relevant_documents(query)[:self.k_bm25]
         semantic_docs = self.semantic_retriever.get_relevant_documents(query)[:self.k_semantic]
 
-        # If at least one exact match found, prioritize full text
-        exact_matches = [doc for doc in bm25_docs if query.lower() in doc.page_content.lower()]
+        # If at least one exact match found, prioritize full text when query is long enough (not common words)
+        exact_matches = [doc for doc in bm25_docs if len(query) > 10 and query.lower() in doc.page_content.lower()]
     
         if exact_matches:  
             return exact_matches[:self.k_final or self.k_bm25]

@@ -400,7 +400,7 @@ def prompt_route():
             error = str(e)
             logging.info(f">>> An error occurred while generating the reponse: {error}", exc_info=True)
             response.headers["error"] = error
-            error_message = f"\nOops! It looks like I'm having a bit of a technical hiccup: {error}\nPlease try again or start a new chat."
+            error_message = f"\nOops! It looks like I'm having a bit of a technical hiccup: {error}.\nPlease try again or start a new chat."
             yield '\n'
             for word in error_message.split(' '):
                 time.sleep(0.1)
@@ -791,6 +791,30 @@ def get_analytics():
             analytic_list = [dict(row) for row in cursor.fetchall()]  # Convert rows to dicts
 
         return jsonify(analytic_list), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    
+    
+@app.route("/api/delete_analytics", methods=["DELETE"])
+def delete_analytics():
+    try:
+        data = request.get_json()
+        session_id = data.get("session_id")
+
+        if not session_id:
+            return jsonify({"error": "session_id is required"}), 400
+
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+
+            cursor.execute("DELETE FROM analytics WHERE session_id = ?", (session_id,))
+            conn.commit()
+
+            if cursor.rowcount == 0:
+                return jsonify({"error": "No record found with the given session_id"}), 404
+
+        return jsonify({"message": "Analytic deleted successfully"}), 200
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

@@ -357,7 +357,7 @@ def prompt_route():
                         unique_sources = set()
                         for doc in retriever_results:
                             source = doc.metadata.get("source", "Unknown Source")
-                            if source not in unique_sources:
+                            if source not in unique_sources and not "AUX_DOCS" in source:
                                 unique_sources.add(source)
                                 sources.append(source)
 

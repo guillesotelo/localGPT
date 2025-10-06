@@ -171,3 +171,7 @@ cython_debug/
 
 SOURCE_DOCUMENTS/*
 !SOURCE_DOCUMENTS/.gitkeep
+AUX_DOCS/*
+!AUX_DOCS/.gitkeep
+
+/node_modules

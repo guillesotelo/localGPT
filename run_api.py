@@ -111,7 +111,7 @@ DB = Chroma(
 )
 
 # Semantic retriever
-retriever = DB.as_retriever(
+semantic_retriever = DB.as_retriever(
     search_type="similarity",
     similarity_metric="cosine" 
 )
@@ -125,17 +125,10 @@ bm25_retriever = BM25Retriever.from_documents(bm25_docs)
 # Hybrid retriever
 hybrid_retriever = HybridRetriever(
     bm25_retriever=bm25_retriever,
-    semantic_retriever=retriever,
+    semantic_retriever=semantic_retriever,
     k_bm25=FULLTEXT_K_DOCS,
     k_semantic=SEMANTIC_K_DOCS,
 )
-
-# Print Chunk sizes in DB
-# collection = DB._collection.get()
-# print('\n')
-# print('Collection lengths:\n')
-# print([len(doc) for doc in collection['documents']])
-# print('\n')
 
 # Load the model with streaming support
 LLM = load_model(device_type=DEVICE_TYPE, model_id=MODEL_ID, model_basename=MODEL_BASENAME)
@@ -275,7 +268,7 @@ def prompt_route():
                             ]
                         )
                         history_aware_retriever = create_history_aware_retriever(
-                            LLM, retriever, contextualize_q_prompt
+                            LLM, semantic_retriever, contextualize_q_prompt
                         )
                         ctx_history_prompt = ChatPromptTemplate.from_messages(
                             [
@@ -467,7 +460,7 @@ def prompt_route_test():
                     model_name=MODEL_NAME, user_prompt=user_prompt, use_context=use_context
                 )
                 question_answer_chain = create_stuff_documents_chain(LLM, prompt)
-                rag_chain = create_retrieval_chain(retriever, question_answer_chain)
+                rag_chain = create_retrieval_chain(semantic_retriever, question_answer_chain)
 
                 chain = rag_chain.pick("answer")
 
@@ -528,7 +521,7 @@ def save_document_route():
 @app.route("/api/run_ingest", methods=["GET"])
 def run_ingest_route():
     global DB
-    global retriever
+    global semantic_retriever
     try:
         if os.path.exists(PERSIST_DIRECTORY):
             try:
@@ -553,7 +546,7 @@ def run_ingest_route():
             embedding_function=EMBEDDINGS,
             client_settings=CHROMA_SETTINGS,
         )
-        retriever = DB.as_retriever()
+        semantic_retriever = DB.as_retriever()
 
         return "Script executed successfully: {}".format(result.stdout.decode("utf-8")), 200
     except Exception as e:

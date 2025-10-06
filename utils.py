@@ -164,3 +164,12 @@ class ExactChromaRetriever(BaseRetriever):
             doc_metadata = {"score": score} if score is not None else {}
             documents.append(Document(page_content=item, metadata=doc_metadata))
         return documents
+
+
+def get_collection_size(db):
+    try:
+        collection = db._collection.get()
+        logging.info(f"Collection length: {len(collection['documents'])}")
+        logging.info(f"Document lengths: {[len(doc) for doc in collection['documents']]}")
+    except Exception as e:
+        logging.info(f"Error getting collection size: {str(e)}", exc_info=True)

@@ -55,7 +55,9 @@ from constants import (
     CHUNK_SIZE,
     CHUNK_OVERLAP,
     FETCH_K_DOCS,
-    LAMBDA_MULT
+    LAMBDA_MULT,
+    SNOK_SYSTEM_PROMPT,
+    PERSIST_DIRECTORY_SNOK
 )
 
 from hybrid_retriever import HybridRetriever
@@ -117,15 +119,43 @@ semantic_retriever = DB.as_retriever(
 )
 
 # Full-text retriever
-with open("bm25_docs.pkl", "rb") as f:
+with open("bm25_docs_hpx.pkl", "rb") as f:
     bm25_docs = pickle.load(f)
-
+    
 bm25_retriever = BM25Retriever.from_documents(bm25_docs)
 
 # Hybrid retriever
 hybrid_retriever = HybridRetriever(
     bm25_retriever=bm25_retriever,
     semantic_retriever=semantic_retriever,
+    k_bm25=FULLTEXT_K_DOCS,
+    k_semantic=SEMANTIC_K_DOCS,
+)
+
+# Load the vectorstore for Snok
+SNOK_DB = Chroma(
+    persist_directory=PERSIST_DIRECTORY_SNOK,
+    embedding_function=EMBEDDINGS,
+    client_settings=CHROMA_SETTINGS,
+    collection_metadata=COLLECTION_METADATA
+)
+
+# Semantic retriever for Snok
+semantic_retriever_snok = SNOK_DB.as_retriever(
+    search_type="similarity",
+    similarity_metric="cosine" 
+)
+
+# Full-text retriever Snok
+with open("bm25_docs_snok.pkl", "rb") as f:
+    bm25_docs_snok = pickle.load(f)
+
+bm25_retriever_snok = BM25Retriever.from_documents(bm25_docs_snok)
+
+# Hybrid retriever for Snok
+hybrid_retriever_snok = HybridRetriever(
+    bm25_retriever=bm25_retriever_snok,
+    semantic_retriever=semantic_retriever_snok,
     k_bm25=FULLTEXT_K_DOCS,
     k_semantic=SEMANTIC_K_DOCS,
 )
@@ -139,12 +169,25 @@ app = Flask(__name__)
 CORS(app, expose_headers=["Stream-ID"])
 
 API_TOKEN = os.getenv("API_TOKEN")
+ADMIN_TOKEN = os.getenv("ADMIN_TOKEN")
 
 def require_token(func):
     """Decorator to check API token"""
     def wrapper(*args, **kwargs):
         token = request.headers.get("Authorization")
-        if not token or token != API_TOKEN:
+        if not token or (token != API_TOKEN and token != ADMIN_TOKEN):
+            return jsonify({"error": "Unauthorized"}), 401
+        return func(*args, **kwargs)
+    
+    # Changing the wrapper name so it doesn't throw errors when called more than once
+    wrapper.__name__ = func.__name__
+    return wrapper
+
+def require_admin_token(func):
+    """Decorator to check API token"""
+    def wrapper(*args, **kwargs):
+        token = request.headers.get("Authorization")
+        if not token or token != ADMIN_TOKEN:
             return jsonify({"error": "Unauthorized"}), 401
         return func(*args, **kwargs)
     
@@ -200,18 +243,22 @@ init_db()
 
 
 @app.route("/api/prompt_route", methods=["GET", "POST"])
+@require_token
 def prompt_route():
     logging.info(">>> Entering /api/prompt_route")
     user_prompt = request.form.get("user_prompt")
     use_context = request.form.get("use_context")
-    use_history = request.form.get("use_history")
     first_query = request.form.get("first_query")
+    from_source = request.form.get("source")
     stream_id = int(request.form.get("stream_id", str(int(time.time() * 1000))))
     stop = request.form.get("stop", "false").lower() == "true"
     error = ''
     logging.info(f"\nUser Prompt: {user_prompt}")
 
     if stop:
+        logging.info(f"Attempting to stop stream ID: {stream_id}")
+        logging.info(f"Active streams: {list(active_streams.keys())}")
+
         with stream_lock:
             if stream_id not in active_streams:
                 return jsonify({"error": f"Stream {stream_id} not found"}), 404
@@ -223,11 +270,6 @@ def prompt_route():
         use_context = True
     else:
         use_context = use_context.lower() == "true"
-
-    if use_history is None:
-        use_history = False
-    else:
-        use_history = use_history.lower() == "true"
 
     if not user_prompt:
         return "No user prompt received", 400
@@ -250,122 +292,92 @@ def prompt_route():
                     print('\n \n')
                     print('\n \n')
 
-                    prompt, memory = get_prompt_template(
-                        model_name=MODEL_NAME, user_prompt=user_prompt, use_context=use_context
+                    if from_source == 'snok':
+                        prompt, memory = get_prompt_template(
+                            system_prompt=SNOK_SYSTEM_PROMPT,
+                            model_name=MODEL_NAME, 
+                            user_prompt=user_prompt, 
+                            use_context=use_context
+                        )
+                    else:
+                        prompt, memory = get_prompt_template(
+                            model_name=MODEL_NAME, 
+                            user_prompt=user_prompt, 
+                            use_context=use_context
+                        )
+                        
+
+                    # Build stream chain
+                    retriever = hybrid_retriever_snok if from_source == 'snok' else hybrid_retriever
+                    question_answer_chain = create_stuff_documents_chain(LLM, prompt)
+                    rag_chain = create_retrieval_chain(retriever, question_answer_chain)
+
+                    chain = rag_chain.pick("answer")
+
+                    for token in chain.stream({"input": user_prompt}):
+                        if active_streams.get(stream_id, {}).get("stop"):
+                            logging.info(f"Stopping stream {stream_id} due to user request.")
+                            break  # Exit the loop if stop signal is received
+                        yield token
+                            
+                    logging.info('\n \n')
+                    logging.info('\n \n')
+                        
+                    # ----- Source generation -----
+                    retriever_results_with_scores = DB.similarity_search_with_relevance_scores(user_prompt, k=SEMANTIC_K_DOCS)
+
+                    for doc, score in retriever_results_with_scores:
+                        logging.info(f"Document: {doc.metadata.get('source', 'Unknown Source')} | Score: {score}")
+
+                    # SIMILARITY_THRESHOLD = 0.71
+                    SIMILARITY_THRESHOLD = 0.5 if first_query else 0.6
+
+                    filtered_results = sorted(
+                        [(doc, score) for doc, score in retriever_results_with_scores if score >= SIMILARITY_THRESHOLD],
+                        key=lambda x: x[1], 
+                        reverse=True
                     )
 
-                    ctx_system_prompt = f"""
-                        {system_prompt}
-                        \n\n
-                        {{context}}
-                        """
-                    if use_history:
-                        contextualize_q_prompt = ChatPromptTemplate.from_messages(
-                            [
-                                ("system", contextualize_q_system_prompt),
-                                MessagesPlaceholder("chat_history"),
-                                ("human", "{input}"),
-                            ]
-                        )
-                        history_aware_retriever = create_history_aware_retriever(
-                            LLM, semantic_retriever, contextualize_q_prompt
-                        )
-                        ctx_history_prompt = ChatPromptTemplate.from_messages(
-                            [
-                                ("system", ctx_system_prompt),
-                                MessagesPlaceholder("chat_history"),
-                                ("human", "{input}"),
-                            ]
-                        )
-                        question_answer_chain = create_stuff_documents_chain(LLM, ctx_history_prompt)
-                        rag_chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
-                        chain = rag_chain.pick("answer")
+                    retriever_results = [doc for doc, score in filtered_results]
+
+                    # If sources don't enter the threshold then we check if the slopoe 
+                    # between the first two is steep enough to return the first one.
+                    if not filtered_results:
+                        seen = set()
+                        unique_results = []
                         
-                        for token in chain.stream({"input": user_prompt}):
-                            if active_streams.get(stream_id, {}).get("stop"):
-                                logging.info(f"Stopping stream {stream_id} due to user request.")
-                                break  # Exit the loop if stop signal is received
-                            yield token
-                        print('\n \n')
-
-                    else:
-                        ctx_prompt = ChatPromptTemplate.from_messages(
-                            [
-                                ("system", ctx_system_prompt),
-                                ("human", "{input}"),
-                            ]
-                        )
-
-                        # Build stream chain
-                        question_answer_chain = create_stuff_documents_chain(LLM, prompt)
-                        rag_chain = create_retrieval_chain(hybrid_retriever, question_answer_chain)
-
-                        chain = rag_chain.pick("answer")
-
-                        for token in chain.stream({"input": user_prompt}):
-                            if active_streams.get(stream_id, {}).get("stop"):
-                                logging.info(f"Stopping stream {stream_id} due to user request.")
-                                break  # Exit the loop if stop signal is received
-                            yield token
-                                
-                        logging.info('\n \n')
-                        logging.info('\n \n')
-                            
-                        # ----- Source generation -----
-                        retriever_results_with_scores = DB.similarity_search_with_relevance_scores(user_prompt, k=SEMANTIC_K_DOCS)
-
                         for doc, score in retriever_results_with_scores:
-                            logging.info(f"Document: {doc.metadata.get('source', 'Unknown Source')} | Score: {score}")
+                            doc_source = doc.metadata.get("source", "Unknown Source")
+                            if doc_source not in seen:
+                                seen.add(doc_source)
+                                unique_results.append((doc, score))
+                        sorted_results = sorted(unique_results, key=lambda x: x[1], reverse=True)
 
-                        # SIMILARITY_THRESHOLD = 0.71
-                        SIMILARITY_THRESHOLD = 0.5 if first_query else 0.6
+                        # if len(sorted_results) > 1 and (sorted_results[0][1] - sorted_results[1][1]) >= 0.025:
+                        if len(sorted_results) > 1 and (sorted_results[0][1] - sorted_results[1][1]) >= 0.1:
+                            retriever_results = [sorted_results[0][0]]
 
-                        filtered_results = sorted(
-                            [(doc, score) for doc, score in retriever_results_with_scores if score >= SIMILARITY_THRESHOLD],
-                            key=lambda x: x[1], 
-                            reverse=True
-                        )
+                    sources = []
+                    sources_returned = 'no'
+                    unique_sources = set()
+                    for doc in retriever_results:
+                        source = doc.metadata.get("source", "Unknown Source")
+                        if source not in unique_sources and not "AUX_DOCS" in source:
+                            unique_sources.add(source)
+                            sources.append(source)
 
-                        retriever_results = [doc for doc, score in filtered_results]
-
-                        # If sources don't enter the threshold then we check if the slopoe 
-                        # between the first two is steep enough to return the first one.
-                        if not filtered_results:
-                            seen = set()
-                            unique_results = []
-                            
-                            for doc, score in retriever_results_with_scores:
-                                doc_source = doc.metadata.get("source", "Unknown Source")
-                                if doc_source not in seen:
-                                    seen.add(doc_source)
-                                    unique_results.append((doc, score))
-                            sorted_results = sorted(unique_results, key=lambda x: x[1], reverse=True)
-
-                            # if len(sorted_results) > 1 and (sorted_results[0][1] - sorted_results[1][1]) >= 0.025:
-                            if len(sorted_results) > 1 and (sorted_results[0][1] - sorted_results[1][1]) >= 0.1:
-                                retriever_results = [sorted_results[0][0]]
-
-                        sources = []
-                        sources_returned = 'no'
-                        unique_sources = set()
-                        for doc in retriever_results:
-                            source = doc.metadata.get("source", "Unknown Source")
-                            if source not in unique_sources and not "AUX_DOCS" in source:
-                                unique_sources.add(source)
-                                sources.append(source)
-
-                        if sources:
-                            source_title = "Sources:" if len(sources) > 1 else "Source:"
-                            yield f"\n <br/><br/><strong>{source_title}</strong>"
-                            
-                            for i, source in enumerate(sources[:4]):
-                                unreleased_mark = ' (unreleased)' if 'UNRELEASED' in source else ''
-                                time.sleep(0.15)  # Simulating streaming effect
-                                sources_returned = 'yes'
-                                yield f"\n- {source}{unreleased_mark}"
-                        logging.info('\n \n')
-                        logging.info(f"Sources returned: {sources_returned}")
-                        logging.info('\n \n')
+                    if sources:
+                        source_title = "Sources:" if len(sources) > 1 else "Source:"
+                        yield f"\n <br/><br/><strong>{source_title}</strong>"
+                        
+                        for i, source in enumerate(sources[:4]):
+                            unreleased_mark = ' (unreleased)' if 'UNRELEASED' in source else ''
+                            time.sleep(0.15)  # Simulating streaming effect
+                            sources_returned = 'yes'
+                            yield f"\n- {source}{unreleased_mark}"
+                    logging.info('\n \n')
+                    logging.info(f"Sources returned: {sources_returned}")
+                    logging.info('\n \n')
 
 
                 # Chat with LLM only
@@ -411,6 +423,7 @@ def prompt_route():
 
 # ---- This is a testing route ----
 @app.route("/api/prompt_route_test", methods=["GET", "POST"])
+@require_token
 def prompt_route_test():
     logging.info(">>> Entering /api/prompt_route_test")
     user_prompt = request.form.get("user_prompt")
@@ -451,7 +464,7 @@ def prompt_route_test():
                 print(f"\n\n*** TESTING CHAT ***\n")
                 
                 # Step 1: Retrieve relevant documents first (stream retrieval)
-                retriever_results = retriever.get_relevant_documents(user_prompt)
+                retriever_results = semantic_retriever.get_relevant_documents(user_prompt)
                 sources = []
                 for doc in retriever_results:
                     sources.append(doc.metadata.get("source", "Unknown Source"))
@@ -490,6 +503,7 @@ def prompt_route_test():
 
 # Other routes remain unchanged
 @app.route("/api/delete_source", methods=["GET"])
+@require_token
 def delete_source_route():
     folder_name = "SOURCE_DOCUMENTS"
 
@@ -502,6 +516,7 @@ def delete_source_route():
 
 
 @app.route("/api/save_document", methods=["GET", "POST"])
+@require_token
 def save_document_route():
     if "document" not in request.files:
         return "No document part", 400
@@ -519,6 +534,7 @@ def save_document_route():
 
 
 @app.route("/api/run_ingest", methods=["GET"])
+@require_token
 def run_ingest_route():
     global DB
     global semantic_retriever
@@ -560,6 +576,7 @@ def check_api_health():
 # ------ FEEDBACK -------
 
 @app.route("/api/save_feedback", methods=["POST"])
+@require_token
 def save_feedback():
     try:
         data = request.get_json()  # Expecting JSON in request body
@@ -597,7 +614,7 @@ def save_feedback():
 
 
 @app.route("/api/get_feedback", methods=["GET"])
-@require_token
+@require_admin_token
 def get_feedback():
     try:
         with sqlite3.connect(DB_FILE) as conn:
@@ -621,6 +638,7 @@ def get_feedback():
 
 
 @app.route("/api/delete_feedback", methods=["DELETE"])
+@require_admin_token
 def delete_feedback():
     try:
         data = request.get_json()
@@ -645,6 +663,7 @@ def delete_feedback():
 
 
 @app.route("/api/update_feedback", methods=["PUT"])
+@require_admin_token
 def update_feedback():
     try:
         data = request.get_json()
@@ -694,6 +713,7 @@ def update_feedback():
 
 
 @app.route('/api/vectorstore_search', methods=['POST'])
+@require_admin_token
 def search_vectors():
     try:
         data = request.get_json()
@@ -704,10 +724,13 @@ def search_vectors():
         if not query:
             return jsonify({"error": "Query parameter is required"}), 400
         
+        logging.info(f"VECTOR SEARCH WITH K: {k}")
+        
         if full_text:
             bm25_docs = bm25_retriever.get_relevant_documents(query)[:k or FULLTEXT_K_DOCS]
             bm25_docs_dicts = [doc.page_content for doc in bm25_docs]
-            return jsonify({"query": query, "matches": bm25_docs_dicts})
+            found_exact = any(query.lower() in doc_text.lower() for doc_text in bm25_docs_dicts)
+            return jsonify({"query": query, "matches": bm25_docs_dicts, "exact": found_exact})
         
         query_embedding = EMBEDDINGS.embed_query(query)
 
@@ -728,6 +751,7 @@ def search_vectors():
     
 
 @app.route("/api/save_analytics", methods=["POST"])
+@require_token
 def save_analytics():
     try:
         data = request.get_json()
@@ -773,6 +797,7 @@ def save_analytics():
     
     
 @app.route("/api/get_analytics", methods=["GET"])
+@require_admin_token
 @require_token
 def get_analytics():
     try:
@@ -789,6 +814,7 @@ def get_analytics():
     
     
 @app.route("/api/delete_analytics", methods=["DELETE"])
+@require_admin_token
 def delete_analytics():
     try:
         data = request.get_json()

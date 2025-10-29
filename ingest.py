@@ -132,12 +132,17 @@ def ingest_environment(env_name, source_directory, persist_directory, embeddings
     logging.info(f"[{env_name}] Deleting existing DB at {persist_directory}")
     force_delete_chroma_db(persist_directory)
 
-    logging.info(f"[{env_name}] Loading documents from {source_directory} and {AUX_DOCS}...")
+    if env_name == 'HPx':
+        logging.info(f"[{env_name}] Loading documents from {source_directory} and {AUX_DOCS}...")
+    else:
+        logging.info(f"[{env_name}] Loading documents from {source_directory}...")
+        
     documents = []
     total_textfile_count = 0
 
     total_textfile_count += load_documents_from_directory(source_directory, documents)
-    total_textfile_count += load_documents_from_directory(AUX_DOCS, documents)
+    if env_name == 'HPx':
+        total_textfile_count += load_documents_from_directory(AUX_DOCS, documents)
 
     if len(documents) == 0:
         logging.warning(f"[{env_name}] No documents found. Skipping ingestion.")
@@ -145,7 +150,9 @@ def ingest_environment(env_name, source_directory, persist_directory, embeddings
 
     # Split documents into text chunks
     text_splitter = RecursiveCharacterTextSplitter(
-        separators=SPLIT_SEPARATORS, chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP
+        separators=SPLIT_SEPARATORS, 
+        chunk_size=CHUNK_SIZE, 
+        chunk_overlap=CHUNK_OVERLAP
     )
     texts = text_splitter.split_documents(documents)
 
@@ -153,6 +160,13 @@ def ingest_environment(env_name, source_directory, persist_directory, embeddings
     bm25_path = f"bm25_docs_{env_name.lower()}.pkl"
     with open(bm25_path, "wb") as f:
         pickle.dump(texts, f)
+    
+    txt_path = f"chunks_{env_name.lower()}.txt"
+    with open(txt_path, "w", encoding="utf-8") as f:
+        for i, doc in enumerate(texts, start=1):
+            f.write(f"--- CHUNK {i} START ---\n")
+            f.write(doc.page_content.strip() + "\n")
+            f.write(f"--- CHUNK {i} END ---\n\n")
 
     logging.info(f"[{env_name}] Loaded {len(documents)}/{total_textfile_count} documents")
     logging.info(f"[{env_name}] Split into {len(texts)} chunks")
@@ -171,7 +185,7 @@ def ingest_environment(env_name, source_directory, persist_directory, embeddings
 
 @click.command()
 @click.option(
-    "--device_type",
+    "--device_type", "-d",
     default="cuda" if torch.cuda.is_available() else "cpu",
     type=click.Choice(
         [
@@ -181,33 +195,41 @@ def ingest_environment(env_name, source_directory, persist_directory, embeddings
     ),
     help="Device to run on. (Default is cuda)",
 )
-def main(device_type):
+@click.option(
+    "--env", "-e",
+    default="HPx",
+    type=click.Choice(["HPx", "SNOK", "all"]),
+    help="Environment source for Chroma ingestion",
+)
+def main(device_type, env):
     # Update date time in auxiliary data
     update_auxiliary_data_file()
 
     # Generate embeddings once, reuse for both environments
     embeddings = get_embeddings(device_type)
 
-    # Ingest HPx environment
-    ingest_environment(
-        env_name="HPx",
-        source_directory=SOURCE_DIRECTORY,
-        persist_directory=PERSIST_DIRECTORY,
-        embeddings=embeddings,
-        device_type=device_type
-    )
-    logging.info("HPx Chroma DB ingested successfully.")
+    if env == 'HPx' or env == 'all':
+        # Ingest HPx environment
+        ingest_environment(
+            env_name="HPx",
+            source_directory=SOURCE_DIRECTORY,
+            persist_directory=PERSIST_DIRECTORY,
+            embeddings=embeddings,
+            device_type=device_type
+        )
+        logging.info("HPx Chroma DB ingested successfully.")
 
-    # Ingest SNOK environment
-    ingest_environment(
-        env_name="SNOK",
-        source_directory=SOURCE_DIRECTORY_SNOK,
-        persist_directory=PERSIST_DIRECTORY_SNOK,
-        embeddings=embeddings,
-        device_type=device_type
-    )
+    if env == 'SNOK' or env == 'all':
+        # Ingest SNOK environment
+        ingest_environment(
+            env_name="SNOK",
+            source_directory=SOURCE_DIRECTORY_SNOK,
+            persist_directory=PERSIST_DIRECTORY_SNOK,
+            embeddings=embeddings,
+            device_type=device_type
+        )
 
-    logging.info("SNOK Chroma DB ingested successfully.")
+        logging.info("SNOK Chroma DB ingested successfully.")
 
 
 if __name__ == "__main__":

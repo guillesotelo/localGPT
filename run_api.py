@@ -157,7 +157,8 @@ hybrid_retriever_snok = HybridRetriever(
     bm25_retriever=bm25_retriever_snok,
     semantic_retriever=semantic_retriever_snok,
     k_bm25=FULLTEXT_K_DOCS,
-    k_semantic=SEMANTIC_K_DOCS,
+    k_semantic=4,
+    use_bm25=False
 )
 
 # Load the model with streaming support
@@ -249,11 +250,14 @@ def prompt_route():
     user_prompt = request.form.get("user_prompt")
     use_context = request.form.get("use_context")
     first_query = request.form.get("first_query")
+    use_history = request.form.get("use_history")
     from_source = request.form.get("source")
     stream_id = int(request.form.get("stream_id", str(int(time.time() * 1000))))
     stop = request.form.get("stop", "false").lower() == "true"
     error = ''
+    logging.info("\n")
     logging.info(f"\nUser Prompt: {user_prompt}")
+    logging.info("\n")
 
     if stop:
         logging.info(f"Attempting to stop stream ID: {stream_id}")
@@ -313,30 +317,41 @@ def prompt_route():
                     rag_chain = create_retrieval_chain(retriever, question_answer_chain)
 
                     chain = rag_chain.pick("answer")
+                    
+                    answer = ''
 
                     for token in chain.stream({"input": user_prompt}):
                         if active_streams.get(stream_id, {}).get("stop"):
                             logging.info(f"Stopping stream {stream_id} due to user request.")
                             break  # Exit the loop if stop signal is received
+                        answer += token
                         yield token
                             
                     logging.info('\n \n')
                     logging.info('\n \n')
                         
                     # ----- Source generation -----
-                    retriever_results_with_scores = DB.similarity_search_with_relevance_scores(user_prompt, k=SEMANTIC_K_DOCS)
+                    source_db = SNOK_DB if from_source == 'snok' else DB
+                    retriever_results_with_scores = source_db.similarity_search_with_relevance_scores(answer, k=SEMANTIC_K_DOCS)
 
                     for doc, score in retriever_results_with_scores:
                         logging.info(f"Document: {doc.metadata.get('source', 'Unknown Source')} | Score: {score}")
 
-                    # SIMILARITY_THRESHOLD = 0.71
-                    SIMILARITY_THRESHOLD = 0.5 if first_query else 0.6
+                    HIGH_THRESHOLD = 0.71
+                    MID_THRESHOLD = 0.61
 
                     filtered_results = sorted(
-                        [(doc, score) for doc, score in retriever_results_with_scores if score >= SIMILARITY_THRESHOLD],
+                        [(doc, score) for doc, score in retriever_results_with_scores if score >= HIGH_THRESHOLD],
                         key=lambda x: x[1], 
                         reverse=True
                     )
+                    
+                    if len(filtered_results) == 0:
+                        filtered_results = sorted(
+                            [(doc, score) for doc, score in retriever_results_with_scores if score >= MID_THRESHOLD],
+                            key=lambda x: x[1], 
+                            reverse=True
+                        )
 
                     retriever_results = [doc for doc, score in filtered_results]
 
@@ -378,6 +393,14 @@ def prompt_route():
                     logging.info('\n \n')
                     logging.info(f"Sources returned: {sources_returned}")
                     logging.info('\n \n')
+                    
+                    if from_source == 'snok':
+                        snok_docs = hybrid_retriever_snok.get_relevant_documents(user_prompt)
+                        if len(snok_docs):
+                            yield f"\n\n\nSnok Retriever:\n"
+                            for doc in snok_docs:
+                                source_title = doc.metadata.get('source','?').split(']')[0].replace('[','')
+                                yield f"\n\nSource={source_title} | Score={doc.metadata.get('score')}\n"
 
 
                 # Chat with LLM only

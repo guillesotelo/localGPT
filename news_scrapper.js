@@ -75,7 +75,10 @@ function loadExistingArticles() {
 
     for (let i = 0; i < data.length; i += 4) {
         if (i + 1 < data.length) {
-            const date = data[i].trim();
+            const dateLine = data[i].trim();
+            // extract date from "Volvo press release {date}:"
+            const dateMatch = dateLine.match(/^Volvo press release (.*):$/);
+            const date = dateMatch ? dateMatch[1] : dateLine;
             const title = data[i + 1].trim();
             existing.add(`${title}||${date}`);
         }
@@ -105,7 +108,14 @@ function saveArticles(articles) {
         return;
     }
 
-    const lines = newArticles.flatMap(a => [a.date, a.title, a.summary, '']);
+    // Prepend "Volvo press release {date}:" to each paragraph
+    const lines = newArticles.flatMap(a => [
+        `Volvo press release ${a.date}:`,
+        a.title,
+        a.summary,
+        ''
+    ]);
+
     fs.appendFileSync(OUTPUT_FILE, lines.join('\n') + '\n', 'utf-8');
     console.log(`Saved ${newArticles.length} new articles.`);
 }

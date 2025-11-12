@@ -9,11 +9,10 @@ from langchain_community.embeddings import HuggingFaceBgeEmbeddings
 from langchain_community.embeddings import HuggingFaceEmbeddings
 
 from transformers import AutoModel, AutoTokenizer
-import torch
+import json
 
 from langchain.schema import BaseRetriever, Document
 from typing import List, Any
-
 
 
 def log_to_csv(question, answer):
@@ -146,6 +145,18 @@ def process_document_with_tables(input_text, table_format="key-value", file_name
 # print("Processed Document:\n")
 # print(processed_document)
 
+
+def document_to_dict(doc):
+    result = {}
+    for k, v in doc.__dict__.items():
+        try:
+            json.dumps(v)  # test if value is JSON-serializable
+            result[k] = v
+        except TypeError:
+            result[k] = str(v)  # fallback: convert non-serializable to string
+    return result
+
+
 class ExactChromaRetriever(BaseRetriever):
     db: Any
     embeddings: Any
@@ -173,3 +184,5 @@ def get_collection_size(db):
         logging.info(f"Document lengths: {[len(doc) for doc in collection['documents']]}")
     except Exception as e:
         logging.info(f"Error getting collection size: {str(e)}", exc_info=True)
+        
+        

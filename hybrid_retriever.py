@@ -3,39 +3,92 @@ from collections import defaultdict
 from pydantic import Field
 import re
 import logging
+import sqlite3
+import json
 
 from langchain.schema import BaseRetriever, Document
 from langchain_core.callbacks import CallbackManagerForRetrieverRun
 from constants import COMMON_WORDS
 
 
+def search_fts(query, k, db_path):
+    """Full text search"""
+    try:
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT page_content, source, chunk_id, metadata_json, bm25(docs) AS score
+            FROM docs
+            WHERE docs MATCH ?
+            ORDER BY score
+            LIMIT ?;
+        """, (query, k))
+
+        rows = cur.fetchall()
+        conn.close()
+        
+        if not rows:
+            return []
+
+        docs = []
+        
+        # Normalize BM25 scores to 0–1 (higher = better)
+        scores = [row["score"] for row in rows]
+        min_s, max_s = min(scores), max(scores)
+        if max_s == min_s:
+            norm_scores = [1.0 for _ in scores]
+        else:
+            norm_scores = [(max_s - s) / (max_s - min_s) for s in scores]
+
+
+        docs = []
+        for row, norm_score in zip(rows, norm_scores):
+            meta = json.loads(row["metadata_json"]) if row["metadata_json"] else {}
+            meta["bm25_score_raw"] = row["score"]
+            meta["score"] = norm_score  # normalized score
+            meta.setdefault("source", row["source"])
+            meta.setdefault("chunk_id", row["chunk_id"])
+            docs.append(Document(page_content=row["page_content"], metadata=meta))
+
+        return docs
+    
+    except:
+        return []
+
+
+def get_uncommon_or_identifier_words(query: str) -> List[str]:
+    words = re.findall(r"\b[\w\-]+\b", query)
+    selected = []
+    for w in words:
+        lw = w.lower()
+
+        looks_like_identifier = bool(re.search(r"[_\-\d]", w)) or any(c.isupper() for c in w)
+        is_uncommon = lw not in COMMON_WORDS and len(w) > 2
+
+        if looks_like_identifier or is_uncommon:
+            selected.append(w)
+    return selected
+
+
+def quote_fts_token(token: str) -> str:
+    token = token.replace('"', '""')
+    # only quote if needed (spaces, operators, etc.)
+    if re.search(r'[^\w]', token):
+        return f'"{token}"'
+    return token
+
+    
 class HybridRetriever(BaseRetriever):
-    bm25_retriever: BaseRetriever = Field(...)
     semantic_retriever: BaseRetriever = Field(...)
     k_bm25: int = Field(default=3)
     k_semantic: int = Field(default=5)
-    k_final: int = Field(default=None)
+    k_final: int = Field(default=6)
     use_bm25: bool = Field(default=True)
+    use_scores: bool = Field(default=False)
+    db_path: str = Field(default="fts_index.db")
 
-    def is_identifier_word(self, word: str) -> bool:
-        return bool(re.fullmatch(r"[\w\-]+", word)) and not word.isalpha()
-
-    def get_uncommon_or_identifier_words(self, query: str) -> List[str]:
-        words = re.findall(r"[\w\-]+", query.lower())
-        selected = []
-        for w in words:
-            if len(w) <= 2 or w in COMMON_WORDS:
-                continue
-            looks_like_identifier = any([
-                re.search(r"\d", w),
-                "_" in w,
-                "-" in w,
-                any(c.isupper() for c in w),
-            ])
-            is_uncommon = w not in COMMON_WORDS and len(w) > 5
-            if looks_like_identifier or is_uncommon:
-                selected.append(w)
-        return selected
 
     def semantic_has_exact_match(self, semantic_docs: List[Document], word: str) -> bool:
         pattern = r"\b" + re.escape(word) + r"\b"
@@ -43,20 +96,25 @@ class HybridRetriever(BaseRetriever):
             if re.search(pattern, doc.page_content, flags=re.IGNORECASE):
                 return True
         return False
+    
 
     def _get_semantic_docs_with_scores(self, query: str) -> List[Document]:
         """Retrieve semantic docs and attach scores to metadata (MultiVectorRetriever-style)."""
         results = []
         try:
-            # Prefer normalized similarity (relevance) if available
-            if hasattr(self.semantic_retriever, "vectorstore"):
-                raw = self.semantic_retriever.vectorstore.similarity_search_with_relevance_scores(
-                    query, k=self.k_semantic
-                )
+            if self.use_scores:    
+                # Prefer normalized similarity (relevance) if available
+                if hasattr(self.semantic_retriever, "vectorstore"):
+                    raw = self.semantic_retriever.vectorstore.similarity_search_with_relevance_scores(
+                        query, k=self.k_semantic
+                    )
+                else:
+                    raw = self.semantic_retriever.vectorstore.similarity_search_with_score(
+                        query, k=self.k_semantic
+                    )
             else:
-                raw = self.semantic_retriever.vectorstore.similarity_search_with_score(
-                    query, k=self.k_semantic
-                )
+                docs = self.semantic_retriever.get_relevant_documents(query)[: self.k_semantic]
+                raw = [(doc, None) for doc in docs]
             results = raw
         except Exception as e:
             logging.warning(f"Falling back to raw semantic retrieval: {e}")
@@ -75,41 +133,48 @@ class HybridRetriever(BaseRetriever):
         semantic_docs = [d for group in id_to_docs.values() for d in group]
         return semantic_docs
 
+
     def _get_relevant_documents(
         self, query: str, *, run_manager: CallbackManagerForRetrieverRun = None
     ) -> List[Document]:
         """Retrieve hybrid documents with scores appended to metadata."""
         semantic_docs = self._get_semantic_docs_with_scores(query)
-        special_words = self.get_uncommon_or_identifier_words(query)
+        special_words = get_uncommon_or_identifier_words(query)
 
         add_bm25 = any(
             not self.semantic_has_exact_match(semantic_docs, word)
             for word in special_words
         )
 
-        if self.use_bm25 and add_bm25:
-            bm25_docs = self.bm25_retriever.get_relevant_documents(query)[: self.k_bm25]
-            for doc in bm25_docs:
-                doc.metadata = dict(doc.metadata or {})
-                doc.metadata.setdefault("score", 0.0)
-            seen = set()
-            final_docs = []
-            for doc in bm25_docs + semantic_docs:
-                if doc.page_content not in seen:
-                    final_docs.append(doc)
-                    seen.add(doc.page_content)
-        else:
-            final_docs = semantic_docs
+        final_docs = list(semantic_docs)
+
+        if self.use_bm25 and add_bm25 and special_words:
+            bm25_query = " ".join(quote_fts_token(w) for w in special_words)
+            bm25_docs = search_fts(bm25_query, self.k_bm25, db_path=self.db_path)
+
+            if bm25_docs:
+                for doc in bm25_docs:
+                    doc.metadata = dict(doc.metadata or {})
+                    doc.metadata.setdefault("score", 0.0)
+
+                    logging.info(
+                        f"[Retriever BM25] Source={doc.metadata.get('source','?')} | Score={doc.metadata.get('score')} | Chunk={doc.page_content}"
+                    )
+
+                seen = set()
+                merged = []
+                for doc in bm25_docs + semantic_docs:
+                    if doc.page_content not in seen:
+                        merged.append(doc)
+                        seen.add(doc.page_content)
+                final_docs = merged
 
         if self.k_final:
             final_docs = final_docs[: self.k_final]
 
-        for doc in final_docs:
-            logging.info(
-                f"[Retriever] Source={doc.metadata.get('source','?')} | Score={doc.metadata.get('score')}"
-            )
-
+            
         return final_docs
+
 
     async def _aget_relevant_documents(
         self, query: str, *, run_manager: CallbackManagerForRetrieverRun = None

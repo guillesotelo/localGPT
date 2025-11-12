@@ -11,27 +11,17 @@ from dotenv import load_dotenv
 import json
 import sqlite3
 load_dotenv()
-import datetime
 
 import torch
 from flask import Flask, jsonify, request, Response
-from langchain.chains import create_history_aware_retriever
 from langchain.chains.retrieval import create_retrieval_chain
-from langchain_community.embeddings import HuggingFaceInstructEmbeddings
 from run_localGPT import load_model
-from prompt_template_utils import get_prompt_template, system_prompt, contextualize_q_system_prompt, get_sources_template
+from prompt_template_utils import get_prompt_template
 from langchain_community.vectorstores import Chroma
 from werkzeug.utils import secure_filename
 from streaming_chain import StreamingChain
 from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.runnables.history import RunnableWithMessageHistory
-from langchain.chains import RetrievalQA
-from langchain.prompts import PromptTemplate
-from langchain_core.runnables import RunnableParallel
-from langchain.retrievers import BM25Retriever
-from transformers import GenerationConfig
-import pickle
+
 
 from constants import (
     CHROMA_SETTINGS, 
@@ -60,10 +50,18 @@ from constants import (
     PERSIST_DIRECTORY_SNOK
 )
 
-from hybrid_retriever import HybridRetriever
+from hybrid_retriever import (
+    HybridRetriever, 
+    search_fts,
+    quote_fts_token,
+    get_uncommon_or_identifier_words
+)
 
 from threading import Lock
-from utils import get_embeddings
+from utils import (
+    get_embeddings,
+    document_to_dict
+    )
 import re
 # For enterprise use
 import ssl
@@ -104,7 +102,8 @@ gc.collect()
 # Load embeddings Model
 EMBEDDINGS = get_embeddings(DEVICE_TYPE)
 
-# Load the vectorstore
+# ------- HPx retrieval ---------
+# Load the vectorstore for HPx
 DB = Chroma(
     persist_directory=PERSIST_DIRECTORY,
     embedding_function=EMBEDDINGS,
@@ -118,20 +117,17 @@ semantic_retriever = DB.as_retriever(
     similarity_metric="cosine" 
 )
 
-# Full-text retriever
-with open("bm25_docs_hpx.pkl", "rb") as f:
-    bm25_docs = pickle.load(f)
-    
-bm25_retriever = BM25Retriever.from_documents(bm25_docs)
-
 # Hybrid retriever
 hybrid_retriever = HybridRetriever(
-    bm25_retriever=bm25_retriever,
     semantic_retriever=semantic_retriever,
     k_bm25=FULLTEXT_K_DOCS,
     k_semantic=SEMANTIC_K_DOCS,
+    db_path="HPx.db",
 )
+# ------- HPx ---------
 
+
+# ------- Snok retrieval ---------
 # Load the vectorstore for Snok
 SNOK_DB = Chroma(
     persist_directory=PERSIST_DIRECTORY_SNOK,
@@ -146,22 +142,18 @@ semantic_retriever_snok = SNOK_DB.as_retriever(
     similarity_metric="cosine" 
 )
 
-# Full-text retriever Snok
-with open("bm25_docs_snok.pkl", "rb") as f:
-    bm25_docs_snok = pickle.load(f)
-
-bm25_retriever_snok = BM25Retriever.from_documents(bm25_docs_snok)
-
 # Hybrid retriever for Snok
 hybrid_retriever_snok = HybridRetriever(
-    bm25_retriever=bm25_retriever_snok,
     semantic_retriever=semantic_retriever_snok,
     k_bm25=FULLTEXT_K_DOCS,
     k_semantic=4,
-    use_bm25=False
+    use_bm25=False,
+    use_scores=True
 )
+# ------- Snok ---------
 
-# Load the model with streaming support
+
+# LLM load
 LLM = load_model(device_type=DEVICE_TYPE, model_id=MODEL_ID, model_basename=MODEL_BASENAME)
 logging.info("LLM ready in API.")
 
@@ -241,6 +233,10 @@ def init_db():
 init_db()
 
 #  ---------- API ROUTES ----------
+
+@app.route("/api/health", methods=["GET"])
+def check_api_health():
+    return "API Status: OK"
 
 
 @app.route("/api/prompt_route", methods=["GET", "POST"])
@@ -428,7 +424,9 @@ def prompt_route():
             error = str(e)
             logging.info(f">>> An error occurred while generating the reponse: {error}", exc_info=True)
             response.headers["error"] = error
-            error_message = f"\nOops! It looks like I'm having a bit of a technical hiccup: {error}.\nPlease try again or start a new chat."
+            error_message = f"""\nOops! It looks like I'm having a bit of a technical hiccup: {error}.
+            \nPlease try again or start a new chat.
+            \nPlease visit [Down@Volvo](https://down.volvocars.net?system=veronica) for more info."""
             yield '\n'
             for word in error_message.split(' '):
                 time.sleep(0.1)
@@ -592,10 +590,6 @@ def run_ingest_route():
         return f"Error occurred: {str(e)}", 500
 
 
-@app.route("/api/health", methods=["GET"])
-def check_api_health():
-    return "API Status: OK"
-
 # ------ FEEDBACK -------
 
 @app.route("/api/save_feedback", methods=["POST"])
@@ -746,26 +740,22 @@ def search_vectors():
 
         if not query:
             return jsonify({"error": "Query parameter is required"}), 400
-        
-        logging.info(f"VECTOR SEARCH WITH K: {k}")
-        
+                
         if full_text:
-            bm25_docs = bm25_retriever.get_relevant_documents(query)[:k or FULLTEXT_K_DOCS]
+            special_words = get_uncommon_or_identifier_words(query)
+            bm25_query = " ".join(quote_fts_token(w) for w in special_words)
+            bm25_docs = search_fts(bm25_query, k or FULLTEXT_K_DOCS, db_path="HPx.db")
             bm25_docs_dicts = [doc.page_content for doc in bm25_docs]
             found_exact = any(query.lower() in doc_text.lower() for doc_text in bm25_docs_dicts)
             return jsonify({"query": query, "matches": bm25_docs_dicts, "exact": found_exact})
         
-        query_embedding = EMBEDDINGS.embed_query(query)
-
-        # Search ChromaDB for similar vectors
-        results =  DB._collection.query(query_embeddings=[query_embedding], n_results=k or SEMANTIC_K_DOCS)
-        # Extract matched documents
-
-        matching_docs = results.get("documents", [[]])[0]
-        found_exact = any(query.lower() in doc_text.lower() for doc_text in matching_docs)
+        results = hybrid_retriever.get_relevant_documents(query)
+        results_serializable = [document_to_dict(d) for d in results]
+        semantic_docs = [doc.page_content for doc in results_serializable]
+        found_exact = any(query.lower() in doc_text.lower() for doc_text in semantic_docs)
         
         # Return matches as JSON
-        return jsonify({"query": query, "matches": matching_docs, "exact": found_exact, "results": results})
+        return jsonify({"query": query, "matches": semantic_docs, "exact": found_exact, "results": results_serializable})
     
     except Exception as e:
         error = str(e)

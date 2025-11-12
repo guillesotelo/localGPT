@@ -11,7 +11,7 @@ const { Builder, By, Key } = require('selenium-webdriver');
 const chrome = require('selenium-webdriver/chrome');
 const cheerio = require('cheerio');
 
-const NEWS_URL = "https://www.media.volvocars.com/global/en-gb/media/pressreleases/list";
+const NEWS_URL = "https://www.volvocars.com/intl/media/press-releases/?page=1&pageSize=100";
 const OUTPUT_FILE = "AUX_DOCS/volvo_press_releases.txt";
 
 // Initialize Chrome driver
@@ -49,16 +49,16 @@ function parseArticles(html) {
     const $ = cheerio.load(html);
     const articles = [];
 
-    $('.listitem').each((_, item) => {
-        const titleEl = $(item).find('.title-container .title');
-        const summaryEl = $(item).find('.title-container .summary');
-        const dateEl = $(item).find('.visibilitydate').first();
+    $('li').each((_, item) => {
+        const titleEl = $(item).find('a').first();
+        const summaryEl = $(item).find('p').first();
+        const dateEl = $(item).find('time');
 
         const title = titleEl.text().trim().replace(/\s+/g, ' ');
         const summary = summaryEl.text().trim().replace(/\s+/g, ' ');
         const date = dateEl.text().trim();
 
-        if (title || summary || date) {
+        if (title && summary && date) {
             articles.push({ title, summary, date });
         }
     });
@@ -131,7 +131,6 @@ async function runScraper() {
 
         console.log('Getting source HTML...')
         const html = await driver.getPageSource();
-
         const articles = parseArticles(html);
         console.log(`Found ${articles.length} articles.`);
 

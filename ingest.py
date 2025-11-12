@@ -5,6 +5,8 @@ import psutil
 import time
 import stat
 import pickle
+import sqlite3
+import json
 
 import click
 import torch
@@ -93,6 +95,45 @@ def force_delete_chroma_db(db_path, collection_name="langchain", max_retries=3, 
         logging.info(f"ChromaDB folder {db_path} does not exist.")
 
 
+def create_fts_table(db_path="fts_index.db"):
+    # Remove existing DB file
+    if os.path.exists(db_path):
+        os.remove(db_path)
+        
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE VIRTUAL TABLE docs USING fts5(
+            page_content,          -- searchable text
+            source UNINDEXED,      -- metadata: file or doc name
+            chunk_id UNINDEXED,    -- metadata: chunk index
+            metadata_json UNINDEXED
+        );
+    """)
+    conn.commit()
+    conn.close()
+    
+
+def insert_documents_for_fts(docs, db_path="fts_index.db"):
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+
+    for doc in docs:
+        meta = doc.metadata or {}
+        cur.execute("""
+            INSERT INTO docs (page_content, source, chunk_id, metadata_json)
+            VALUES (?, ?, ?, ?)
+        """, (
+            doc.page_content,
+            meta.get("source", ""),
+            meta.get("chunk_id", ""),
+            json.dumps(meta),
+        ))
+
+    conn.commit()
+    conn.close()
+
+
 def load_documents_from_directory(directory, documents):
     """Load and append documents from the given directory to the list."""
     total_textfiles = 0
@@ -118,12 +159,12 @@ def load_documents_from_directory(directory, documents):
                     url = f"[{spliturl[0]}]({SERVER_URL}{spliturl[1].replace(ext, url_ext)})"
                     document.metadata["source"] = url
 
-                if len(document.page_content) > 300:
+                if len(document.page_content) > 50: # skip pages with just few words (md headers)
                     documents.append(document)
+                    
 
             except Exception as ex:
                 file_log(f"{source_file_path} loading error: \n{ex}")
-
     return total_textfiles
 
 
@@ -147,6 +188,7 @@ def ingest_environment(env_name, source_directory, persist_directory, embeddings
     if len(documents) == 0:
         logging.warning(f"[{env_name}] No documents found. Skipping ingestion.")
         return
+    
 
     # Split documents into text chunks
     text_splitter = RecursiveCharacterTextSplitter(
@@ -156,10 +198,9 @@ def ingest_environment(env_name, source_directory, persist_directory, embeddings
     )
     texts = text_splitter.split_documents(documents)
 
-    # Save docs for bm25 retrieval (optional, only for primary env usually)
-    bm25_path = f"bm25_docs_{env_name.lower()}.pkl"
-    with open(bm25_path, "wb") as f:
-        pickle.dump(texts, f)
+    # FTS - BM25
+    create_fts_table(db_path=f"{env_name}.db")
+    insert_documents_for_fts(texts, db_path=f"{env_name}.db")
     
     txt_path = f"chunks_{env_name.lower()}.txt"
     with open(txt_path, "w", encoding="utf-8") as f:

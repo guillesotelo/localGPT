@@ -72,6 +72,17 @@ def get_uncommon_or_identifier_words(query: str) -> List[str]:
     return selected
 
 
+def results_contain_relevance_words(query: str, docs: List[Document]) -> bool:
+    words = re.findall(r"\b[\w\-]+\b", query)
+    flag = False
+    for w in words:
+        lw = w.lower()
+        for doc in docs:
+            if lw not in COMMON_WORDS and doc.page_content.lower().contains(lw):
+                flag = True
+    return flag
+                
+            
 def quote_fts_token(token: str) -> str:
     token = token.replace('"', '""')
     # only quote if needed (spaces, operators, etc.)
@@ -141,14 +152,14 @@ class HybridRetriever(BaseRetriever):
         semantic_docs = self._get_semantic_docs_with_scores(query)
         special_words = get_uncommon_or_identifier_words(query)
 
+        final_docs = list(semantic_docs)
+        
         add_bm25 = any(
             not self.semantic_has_exact_match(semantic_docs, word)
             for word in special_words
-        )
+        ) or results_contain_relevance_words(query, final_docs)
 
-        final_docs = list(semantic_docs)
-
-        if self.use_bm25 and add_bm25 and special_words:
+        if self.use_bm25 and (add_bm25 or special_words):
             bm25_query = " ".join(quote_fts_token(w) for w in special_words)
             bm25_docs = search_fts(bm25_query, self.k_bm25, db_path=self.db_path)
 

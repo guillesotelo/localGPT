@@ -157,26 +157,6 @@ def document_to_dict(doc):
     return result
 
 
-class ExactChromaRetriever(BaseRetriever):
-    db: Any
-    embeddings: Any
-    k: int = 4
-
-    def get_relevant_documents(self, query: str) -> list[Document]:
-        query_embedding = self.embeddings.embed_query(query)
-        results = self.db._collection.query(
-            query_embeddings=[query_embedding],
-            n_results=self.k
-        )
-
-        documents = []
-        for i, item in enumerate(results["documents"][0]):
-            score = results.get("distances", [[]])[0][i] if "distances" in results else None
-            doc_metadata = {"score": score} if score is not None else {}
-            documents.append(Document(page_content=item, metadata=doc_metadata))
-        return documents
-
-
 def get_collection_size(db):
     try:
         collection = db._collection.get()

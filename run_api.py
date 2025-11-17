@@ -114,7 +114,8 @@ DB = Chroma(
 # Semantic retriever
 semantic_retriever = DB.as_retriever(
     search_type="similarity",
-    similarity_metric="cosine" 
+    similarity_metric="cosine",
+    search_kwargs={"k": 20}
 )
 
 # Hybrid retriever
@@ -124,6 +125,7 @@ hybrid_retriever = HybridRetriever(
     k_semantic=SEMANTIC_K_DOCS,
     db_path="HPx.db",
 )
+
 # ------- HPx ---------
 
 
@@ -139,7 +141,8 @@ SNOK_DB = Chroma(
 # Semantic retriever for Snok
 semantic_retriever_snok = SNOK_DB.as_retriever(
     search_type="similarity",
-    similarity_metric="cosine" 
+    similarity_metric="cosine",
+    search_kwargs={"k": 20}
 )
 
 # Hybrid retriever for Snok
@@ -327,8 +330,8 @@ def prompt_route():
                     logging.info('\n \n')
                         
                     # ----- Source generation -----
-                    source_db = SNOK_DB if from_source == 'snok' else DB
-                    retriever_results_with_scores = source_db.similarity_search_with_relevance_scores(answer, k=SEMANTIC_K_DOCS)
+                    source_retriever = semantic_retriever_snok if from_source == 'snok' else semantic_retriever
+                    retriever_results_with_scores = source_retriever.vectorstore.similarity_search_with_relevance_scores(answer, k=SEMANTIC_K_DOCS)
 
                     for doc, score in retriever_results_with_scores:
                         logging.info(f"Document: {doc.metadata.get('source', 'Unknown Source')} | Score: {score}")
@@ -749,13 +752,13 @@ def search_vectors():
             found_exact = any(query.lower() in doc_text.lower() for doc_text in bm25_docs_dicts)
             return jsonify({"query": query, "matches": bm25_docs_dicts, "exact": found_exact})
         
-        results = hybrid_retriever.get_relevant_documents(query)
-        results_serializable = [document_to_dict(d) for d in results]
-        semantic_docs = [doc.page_content for doc in results_serializable]
-        found_exact = any(query.lower() in doc_text.lower() for doc_text in semantic_docs)
+        results = hybrid_retriever.get_relevant_documents(query)[:k]
+        semantic_docs = [document_to_dict(d) for d in results]
+        results_serializable = [doc["page_content"] for doc in semantic_docs]
+        found_exact = any(query.lower() in doc_text.lower() for doc_text in results_serializable)
         
         # Return matches as JSON
-        return jsonify({"query": query, "matches": semantic_docs, "exact": found_exact, "results": results_serializable})
+        return jsonify({"query": query, "matches": results_serializable, "exact": found_exact, "results": semantic_docs})
     
     except Exception as e:
         error = str(e)

@@ -7,8 +7,14 @@ from huggingface_hub import hf_hub_download
 from constants import (
     MODEL_ID,
     MODEL_BASENAME,
-    MODELS_PATH
+    MODELS_PATH,
+    SOURCE_DIRECTORY,
+    AUX_DOCS,
+    SERVER_URL
 )
+
+dataset_output = "./training/qwen_training_data.jsonl"
+
 # --------------------------
 # Set up Qwen LLM in LangChain
 # --------------------------
@@ -120,7 +126,7 @@ def create_qwen_sample(question, answer, metadata=None):
         sample["metadata"] = metadata
     return sample
 
-def save_jsonl(samples, output_file="qwen_training_data.jsonl"):
+def save_jsonl(samples, output_file=dataset_output):
     """Save list of dicts to JSONL file"""
     with open(output_file, "a", encoding="utf-8") as f:
         for sample in samples:
@@ -130,7 +136,7 @@ def save_jsonl(samples, output_file="qwen_training_data.jsonl"):
 # Main pipeline
 # --------------------------
 
-def main(input_folder="docs", output_file="qwen_training_data.jsonl", chunk_size=500):
+def main(input_folder="docs", output_file=dataset_output, chunk_size=500):
     docs = read_txt_files(input_folder)
     all_samples = []
     
@@ -138,10 +144,19 @@ def main(input_folder="docs", output_file="qwen_training_data.jsonl", chunk_size
         chunks = chunk_text(doc["text"], chunk_size=chunk_size)
         for chunk in chunks:
             question, answer = generate_qa(chunk)
+            filename = doc["filename"]
+            ext = os.path.splitext(filename)[1]
+            if ext not in (".txt", ".md", ".rst"):
+                continue
+            if '§' in filename:
+                spliturl = filename[4:].replace('¤', '/').split('§')
+                url_ext = '.md' if ext == '.md' else '.html'
+                url = f"[{spliturl[0]}]({SERVER_URL}{spliturl[1].replace(ext, url_ext)})"
+
             sample = create_qwen_sample(
                 question, 
                 answer, 
-                metadata={"source_file": doc["filename"]}
+                metadata={"source": url or filename}
             )
             all_samples.append(sample)
     
@@ -152,4 +167,4 @@ def main(input_folder="docs", output_file="qwen_training_data.jsonl", chunk_size
 # Run
 # --------------------------
 if __name__ == "__main__":
-    main(input_folder="docs", output_file="qwen_training_data.jsonl", chunk_size=500)
+    main(input_folder=SOURCE_DIRECTORY, output_file=dataset_output, chunk_size=500)

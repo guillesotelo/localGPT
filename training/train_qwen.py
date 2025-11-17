@@ -2,20 +2,38 @@ import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, Trainer, TrainingArguments, DataCollatorForSeq2Seq
 from peft import LoraConfig, get_peft_model
 from datasets import load_dataset
+from huggingface_hub import hf_hub_download
+from constants import (
+    MODEL_ID,
+    MODEL_BASENAME,
+    MODELS_PATH
+)
+
+output_dir =  MODELS_PATH + '/' + 'finetuned'
+model_output_path = output_dir + '/' + MODEL_ID + '_finetuned'
+dataset_path = "qwen_training_data.jsonl"
 
 # --------------------------
 # Load tokenizer & model
 # --------------------------
-model_name = "Qwen-2.5-7B-Instruct"  # local or HF repo
-tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=False)
+
+model_path = hf_hub_download(
+        repo_id=MODEL_ID,
+        filename=MODEL_BASENAME,
+        resume_download=True,
+        cache_dir=MODELS_PATH,
+    )
+
+tokenizer = AutoTokenizer.from_pretrained(model_path, cache_dir=MODELS_PATH, use_fast=False)
 
 # Load model in 4-bit for QLoRA (requires bitsandbytes)
 model = AutoModelForCausalLM.from_pretrained(
-    model_name,
+    model_path,
     load_in_4bit=True,
     device_map="auto",
     torch_dtype=torch.float16
 )
+
 
 # --------------------------
 # Set up LoRA config
@@ -34,7 +52,6 @@ model = get_peft_model(model, lora_config)
 # --------------------------
 # Load JSONL dataset
 # --------------------------
-dataset_path = "qwen_training_data.jsonl"
 
 def preprocess(example):
     # concatenate all assistant/user messages
@@ -63,7 +80,7 @@ data_collator = DataCollatorForSeq2Seq(tokenizer, pad_to_multiple_of=8, return_t
 # Training arguments
 # --------------------------
 training_args = TrainingArguments(
-    output_dir="./qwen_finetuned",
+    output_dir=output_dir,
     per_device_train_batch_size=1,      # fits T4
     gradient_accumulation_steps=8,      # effective batch size = 8
     num_train_epochs=3,
@@ -93,5 +110,5 @@ trainer = Trainer(
 # Start fine-tuning
 # --------------------------
 trainer.train()
-trainer.save_model("./qwen_finetuned")
+trainer.save_model(model_output_path)
 print("Fine-tuning complete. Model saved at ./qwen_finetuned")

@@ -3,16 +3,26 @@ import json
 from pathlib import Path
 from langchain.llms import HuggingFacePipeline  # or your LangChain Qwen wrapper
 from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
-
+from huggingface_hub import hf_hub_download
+from constants import (
+    MODEL_ID,
+    MODEL_BASENAME,
+    MODELS_PATH
+)
 # --------------------------
 # Set up Qwen LLM in LangChain
 # --------------------------
 
-model_name = "Qwen-2.5-7B-Instruct"  # replace with local path or HF repo
+model_path = hf_hub_download(
+        repo_id=MODEL_ID,
+        filename=MODEL_BASENAME,
+        resume_download=True,
+        cache_dir=MODELS_PATH,
+    )
 
-tokenizer = AutoTokenizer.from_pretrained(model_name)
+tokenizer = AutoTokenizer.from_pretrained(model_path)
 model = AutoModelForCausalLM.from_pretrained(
-    model_name,
+    model_path,
     device_map="auto",  # uses your GPU
     torch_dtype="auto"
 )

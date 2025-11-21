@@ -78,7 +78,7 @@ def results_contain_relevance_words(query: str, docs: List[Document]) -> bool:
     for w in words:
         lw = w.lower()
         for doc in docs:
-            if lw not in COMMON_WORDS and doc.page_content.lower().contains(lw):
+            if lw not in COMMON_WORDS and lw in doc.page_content.lower():
                 flag = True
     return flag
                 

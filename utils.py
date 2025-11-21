@@ -166,3 +166,14 @@ def get_collection_size(db):
         logging.info(f"Error getting collection size: {str(e)}", exc_info=True)
         
         
+# STOP HANDLER FOR LLM
+from langchain.callbacks.base import BaseCallbackHandler
+
+class StopStreamHandler(BaseCallbackHandler):
+    def __init__(self, stream_id, redis_client):
+        self.stream_id = stream_id
+        self.r = redis_client
+
+    def on_llm_new_token(self, token: str, **kwargs):
+        if self.r.hget(f"stream:{self.stream_id}", "stop") == b"1":
+            raise KeyboardInterrupt("User requested stop")

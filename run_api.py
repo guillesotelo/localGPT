@@ -10,6 +10,8 @@ from flask_cors import CORS
 from dotenv import load_dotenv
 import json
 import sqlite3
+import redis
+import random
 load_dotenv()
 
 import torch
@@ -47,7 +49,8 @@ from constants import (
     FETCH_K_DOCS,
     LAMBDA_MULT,
     SNOK_SYSTEM_PROMPT,
-    PERSIST_DIRECTORY_SNOK
+    PERSIST_DIRECTORY_SNOK,
+    TECH_ISSUE_LLM
 )
 
 from hybrid_retriever import (
@@ -60,7 +63,8 @@ from hybrid_retriever import (
 from threading import Lock
 from utils import (
     get_embeddings,
-    document_to_dict
+    document_to_dict,
+    StopStreamHandler
     )
 import re
 # For enterprise use
@@ -89,11 +93,9 @@ SHOW_SOURCES = True
 logging.info(f"Running on: {DEVICE_TYPE}")
 logging.info(f"Display Source Documents set to: {SHOW_SOURCES}")
 
-# API queue addition
-stream_lock = Lock()
-
 # Active requests
-active_streams = {}
+r_streams = redis.Redis(host='localhost', port=6379, db=0)
+STREAM_TTL = 300
 
 torch.cuda.empty_cache()
 import gc
@@ -260,12 +262,14 @@ def prompt_route():
 
     if stop:
         logging.info(f"Attempting to stop stream ID: {stream_id}")
-        logging.info(f"Active streams: {list(active_streams.keys())}")
 
-        with stream_lock:
-            if stream_id not in active_streams:
-                return jsonify({"error": f"Stream {stream_id} not found"}), 404
-            active_streams[stream_id]["stop"] = True
+        # Check if stream exists
+        if not r_streams.exists(f"stream:{stream_id}"):
+            return jsonify({"error": f"Stream {stream_id} not found"}), 404
+
+        # Set stop flag (atomic)
+        r_streams.hset(f"stream:{stream_id}", "stop", 1)
+
         logging.info(f"Stop signal sent for stream ID: {stream_id}")
         return jsonify({"message": f"Stream {stream_id} stop signal issued."}), 200
 
@@ -276,174 +280,189 @@ def prompt_route():
 
     if not user_prompt:
         return "No user prompt received", 400
+    
+    if r_streams.exists(f"stream:{stream_id}"):
+        return jsonify({"error": f"Stream {stream_id} is already in progress"}), 409
 
-    with stream_lock:
-        if stream_id in active_streams:
-            return jsonify({"error": f"Stream {stream_id} is already in progress"}), 409
-        active_streams[stream_id] = {"stop": False, "lock": Lock()}
-
+    r_streams.hset(f"stream:{stream_id}", mapping={"stop": 0})
+    r_streams.expire(f"stream:{stream_id}", STREAM_TTL)
+    
     def generate_stream():
+        nonlocal error
         try:
-            with active_streams[stream_id]["lock"]:
-                # Use documents context
-                if use_context:
-                    print('\n \n')
-                    print('\n \n')
-                    print('*** Using chat with CONTEXT ***')
-                    print(f'User prompt: {user_prompt}')
-                    print(f"It's first query: {'yes' if first_query else 'no'}")
-                    print('\n \n')
-                    print('\n \n')
+            r_streams.expire(f"stream:{stream_id}", STREAM_TTL)
+            stop_handler = StopStreamHandler(stream_id, r_streams)
+            
+            # Use documents context
+            if use_context:
+                print('\n \n')
+                print('\n \n')
+                print('*** Using chat with CONTEXT ***')
+                print(f'User prompt: {user_prompt}')
+                print(f"It's first query: {'yes' if first_query else 'no'}")
+                print('\n \n')
+                print('\n \n')
 
-                    if from_source == 'snok':
-                        prompt, memory = get_prompt_template(
-                            system_prompt=SNOK_SYSTEM_PROMPT,
-                            model_name=MODEL_NAME, 
-                            user_prompt=user_prompt, 
-                            use_context=use_context
-                        )
-                    else:
-                        prompt, memory = get_prompt_template(
-                            model_name=MODEL_NAME, 
-                            user_prompt=user_prompt, 
-                            use_context=use_context
-                        )
-                        
-
-                    # Build stream chain
-                    retriever = hybrid_retriever_snok if from_source == 'snok' else hybrid_retriever
-                    question_answer_chain = create_stuff_documents_chain(LLM, prompt)
-                    rag_chain = create_retrieval_chain(retriever, question_answer_chain)
-
-                    chain = rag_chain.pick("answer")
+                if from_source == 'snok':
+                    prompt, memory = get_prompt_template(
+                        system_prompt=SNOK_SYSTEM_PROMPT,
+                        model_name=MODEL_NAME, 
+                        user_prompt=user_prompt, 
+                        use_context=use_context
+                    )
+                else:
+                    prompt, memory = get_prompt_template(
+                        model_name=MODEL_NAME, 
+                        user_prompt=user_prompt, 
+                        use_context=use_context
+                    )
                     
-                    answer = ''
 
-                    for token in chain.stream({"input": user_prompt}):
-                        if active_streams.get(stream_id, {}).get("stop"):
-                            logging.info(f"Stopping stream {stream_id} due to user request.")
-                            break  # Exit the loop if stop signal is received
-                        answer += token
-                        yield token
-                            
-                    logging.info('\n \n')
-                    logging.info('\n \n')
+                # Build stream chain
+                retriever = hybrid_retriever_snok if from_source == 'snok' else hybrid_retriever
+                question_answer_chain = create_stuff_documents_chain(LLM, prompt)
+                rag_chain = create_retrieval_chain(retriever, question_answer_chain)
+
+                chain = rag_chain.pick("answer")
+
+                # Appending the stop callback to existing callbacks (so we don't overwrite the default stream logging)
+                existing_callbacks = getattr(LLM, "callbacks", [])
+                stop_handler = StopStreamHandler(stream_id, r_streams)
+                LLM.callbacks = existing_callbacks + [stop_handler]
+
+                answer = ''
+
+                for token in chain.stream({"input": user_prompt}):
+                    if r_streams.hget(f"stream:{stream_id}", "stop") == b"1":
+                        logging.info(f"Stopping stream {stream_id} due to user request.")
+                        break  # Exit the loop if stop signal is received
+                    answer += token
+                    yield token
                         
-                    # ----- Source generation -----
-                    source_retriever = semantic_retriever_snok if from_source == 'snok' else semantic_retriever
-                    retriever_results_with_scores = source_retriever.vectorstore.similarity_search_with_relevance_scores(answer, k=SEMANTIC_K_DOCS)
+                logging.info('\n \n')
+                logging.info('\n \n')
+                    
+                # ----- Source generation -----
+                source_retriever = semantic_retriever_snok if from_source == 'snok' else semantic_retriever
+                retriever_results_with_scores = source_retriever.vectorstore.similarity_search_with_relevance_scores(answer, k=SEMANTIC_K_DOCS)
 
-                    for doc, score in retriever_results_with_scores:
-                        logging.info(f"Document: {doc.metadata.get('source', 'Unknown Source')} | Score: {score}")
+                for doc, score in retriever_results_with_scores:
+                    logging.info(f"Document: {doc.metadata.get('source', 'Unknown Source')} | Score: {score}")
 
-                    HIGH_THRESHOLD = 0.71
-                    MID_THRESHOLD = 0.61
+                HIGH_THRESHOLD = 0.71
+                MID_THRESHOLD = 0.61
 
+                filtered_results = sorted(
+                    [(doc, score) for doc, score in retriever_results_with_scores if score >= HIGH_THRESHOLD],
+                    key=lambda x: x[1], 
+                    reverse=True
+                )
+                
+                if len(filtered_results) == 0:
                     filtered_results = sorted(
-                        [(doc, score) for doc, score in retriever_results_with_scores if score >= HIGH_THRESHOLD],
+                        [(doc, score) for doc, score in retriever_results_with_scores if score >= MID_THRESHOLD],
                         key=lambda x: x[1], 
                         reverse=True
                     )
+
+                retriever_results = [doc for doc, score in filtered_results]
+
+                # If sources don't enter the threshold then we check if the slopoe 
+                # between the first two is steep enough to return the first one.
+                if not filtered_results:
+                    seen = set()
+                    unique_results = []
                     
-                    if len(filtered_results) == 0:
-                        filtered_results = sorted(
-                            [(doc, score) for doc, score in retriever_results_with_scores if score >= MID_THRESHOLD],
-                            key=lambda x: x[1], 
-                            reverse=True
-                        )
+                    for doc, score in retriever_results_with_scores:
+                        doc_source = doc.metadata.get("source", "Unknown Source")
+                        if doc_source not in seen:
+                            seen.add(doc_source)
+                            unique_results.append((doc, score))
+                    sorted_results = sorted(unique_results, key=lambda x: x[1], reverse=True)
 
-                    retriever_results = [doc for doc, score in filtered_results]
+                    # if len(sorted_results) > 1 and (sorted_results[0][1] - sorted_results[1][1]) >= 0.025:
+                    if len(sorted_results) > 1 and (sorted_results[0][1] - sorted_results[1][1]) >= 0.1:
+                        retriever_results = [sorted_results[0][0]]
 
-                    # If sources don't enter the threshold then we check if the slopoe 
-                    # between the first two is steep enough to return the first one.
-                    if not filtered_results:
-                        seen = set()
-                        unique_results = []
-                        
-                        for doc, score in retriever_results_with_scores:
-                            doc_source = doc.metadata.get("source", "Unknown Source")
-                            if doc_source not in seen:
-                                seen.add(doc_source)
-                                unique_results.append((doc, score))
-                        sorted_results = sorted(unique_results, key=lambda x: x[1], reverse=True)
+                sources = []
+                sources_returned = 'no'
+                unique_sources = set()
+                for doc in retriever_results:
+                    source = doc.metadata.get("source", "Unknown Source")
+                    if source not in unique_sources and not "AUX_DOCS" in source:
+                        unique_sources.add(source)
+                        sources.append(source)
 
-                        # if len(sorted_results) > 1 and (sorted_results[0][1] - sorted_results[1][1]) >= 0.025:
-                        if len(sorted_results) > 1 and (sorted_results[0][1] - sorted_results[1][1]) >= 0.1:
-                            retriever_results = [sorted_results[0][0]]
-
-                    sources = []
-                    sources_returned = 'no'
-                    unique_sources = set()
-                    for doc in retriever_results:
-                        source = doc.metadata.get("source", "Unknown Source")
-                        if source not in unique_sources and not "AUX_DOCS" in source:
-                            unique_sources.add(source)
-                            sources.append(source)
-
-                    if sources:
-                        source_title = "Sources:" if len(sources) > 1 else "Source:"
-                        yield f"\n <br/><br/><strong>{source_title}</strong>"
-                        
-                        for i, source in enumerate(sources[:4]):
-                            unreleased_mark = ' (unreleased)' if 'UNRELEASED' in source else ''
-                            time.sleep(0.15)  # Simulating streaming effect
-                            sources_returned = 'yes'
-                            yield f"\n- {source}{unreleased_mark}"
-                    logging.info('\n \n')
-                    logging.info(f"Sources returned: {sources_returned}")
-                    logging.info('\n \n')
+                if sources:
+                    source_title = "Sources:" if len(sources) > 1 else "Source:"
+                    yield f"\n <br/><br/><strong>{source_title}</strong>"
                     
-                    if from_source == 'snok':
-                        snok_docs = hybrid_retriever_snok.get_relevant_documents(user_prompt)
-                        if len(snok_docs):
-                            yield f"\n\n\nSnok Retriever:\n"
-                            for doc in snok_docs:
-                                source_title = doc.metadata.get('source','?').split(']')[0].replace('[','')
-                                yield f"\n\nSource={source_title} | Score={doc.metadata.get('score')}\n"
+                    for i, source in enumerate(sources[:4]):
+                        unreleased_mark = ' (unreleased)' if 'UNRELEASED' in source else ''
+                        time.sleep(0.15)  # Simulating streaming effect
+                        sources_returned = 'yes'
+                        yield f"\n- {source}{unreleased_mark}"
+                logging.info('\n \n')
+                logging.info(f"Sources returned: {sources_returned}")
+                logging.info('\n \n')
+                
+                if from_source == 'snok':
+                    snok_docs = hybrid_retriever_snok.get_relevant_documents(user_prompt)
+                    if len(snok_docs):
+                        yield f"\n\n\nSnok Retriever:\n"
+                        for doc in snok_docs:
+                            source_title = doc.metadata.get('source','?').split(']')[0].replace('[','')
+                            yield f"\n\nSource={source_title} | Score={doc.metadata.get('score')}\n"
 
 
-                # Chat with LLM only
-                else:
-                    print(f"\n\n*** Using direct chat with LLM ***\n")
-                    prompt, memory = get_prompt_template(
-                        model_name=MODEL_NAME, user_prompt=user_prompt, use_context=use_context
-                    )
-                    input_data = {"context": None, "question": user_prompt, "history": use_history}
+            # Chat with LLM only
+            else:
+                print(f"\n\n*** Using direct chat with LLM ***\n")
+                prompt, memory = get_prompt_template(
+                    model_name=MODEL_NAME, user_prompt=user_prompt, use_context=use_context
+                )
+                input_data = {"context": None, "question": user_prompt, "history": use_history}
 
-                    try:
-                        print("\nAnswer: \n")
-                        llm_chain = StreamingChain(LLM, prompt)
-                        for token in llm_chain.stream(input_data=input_data):
-                            if active_streams.get(stream_id, {}).get("stop"):
-                                logging.info(f"Stopping stream {stream_id} due to user request.")
-                                break  # Exit the loop if stop signal is received
-                            yield token.encode("utf-8")
-                        print("\n\n")
-                    except Exception as e:
-                        logging.error(f"Error during streaming: {str(e)}")
-                        yield "Error occurred during streaming".encode("utf-8")
+                try:
+                    print("\nAnswer: \n")
+                    llm_chain = StreamingChain(LLM, prompt)
+                    for token in llm_chain.stream(input_data=input_data):
+                        if r_streams.hget(f"stream:{stream_id}", "stop") == b"1":
+                            logging.info(f"Stopping stream {stream_id} due to user request.")
+                            break  # Exit the loop if stop signal is received
+                        yield token.encode("utf-8")
+                    print("\n\n")
+                except Exception as e:
+                    logging.error(f"Error during streaming: {str(e)}")
+                    yield "Error occurred during streaming".encode("utf-8")
 
+        except KeyboardInterrupt:
+            logging.info(f"Stream {stream_id} stopped by user")
+            
         except Exception as e:
             error = str(e)
             logging.info(f">>> An error occurred while generating the reponse: {error}", exc_info=True)
             response.headers["error"] = error
-            error_message = f"""\nOops! It looks like I'm having a bit of a technical hiccup: {error}.
+            
+            error_user_message = random.choice(TECH_ISSUE_LLM)
+            error_message = f"""\n{error_user_message}
             \nPlease try again or start a new chat.
-            \nPlease visit [Down@Volvo](https://down.volvocars.net?system=veronica) for more info."""
+            \nVisit [Down@Volvo](https://down.volvocars.net?system=veronica) for more info."""
+            
             yield '\n'
             for word in error_message.split(' '):
                 time.sleep(0.1)
                 yield f"{word} "
         
         finally:
-            with stream_lock:
-                active_streams.pop(stream_id, None)
+            r_streams.delete(f"stream:{stream_id}")
 
     response = Response(generate_stream(), mimetype="text/plain")
     response.headers["Stream-ID"] = stream_id
     logging.info(f">>> Generated response for stream ID: {stream_id}")
     logging.info(">>> Exiting /api/prompt_route")
     return response
+
 
 # ---- This is a testing route ----
 @app.route("/api/prompt_route_test", methods=["GET", "POST"])
@@ -452,15 +471,26 @@ def prompt_route_test():
     logging.info(">>> Entering /api/prompt_route_test")
     user_prompt = request.form.get("user_prompt")
     use_context = request.form.get("use_context")
+    first_query = request.form.get("first_query")
     use_history = request.form.get("use_history")
+    from_source = request.form.get("source")
     stream_id = int(request.form.get("stream_id", str(int(time.time() * 1000))))
     stop = request.form.get("stop", "false").lower() == "true"
+    error = ''
+    logging.info("\n")
+    logging.info(f"\nUser Prompt: {user_prompt}")
+    logging.info("\n")
 
     if stop:
-        with stream_lock:
-            if stream_id not in active_streams:
-                return jsonify({"error": f"Stream {stream_id} not found"}), 404
-            active_streams[stream_id]["stop"] = True
+        logging.info(f"Attempting to stop stream ID: {stream_id}")
+
+        # Check if stream exists
+        if not r_streams.exists(f"stream:{stream_id}"):
+            return jsonify({"error": f"Stream {stream_id} not found"}), 404
+
+        # Set stop flag (atomic)
+        r_streams.hset(f"stream:{stream_id}", "stop", 1)
+
         logging.info(f"Stop signal sent for stream ID: {stream_id}")
         return jsonify({"message": f"Stream {stream_id} stop signal issued."}), 200
 
@@ -469,59 +499,189 @@ def prompt_route_test():
     else:
         use_context = use_context.lower() == "true"
 
-    if use_history is None:
-        use_history = False
-    else:
-        use_history = use_history.lower() == "true"
-
     if not user_prompt:
         return "No user prompt received", 400
 
-    with stream_lock:
-        if stream_id in active_streams:
-            return jsonify({"error": f"Stream {stream_id} is already in progress"}), 409
-        active_streams[stream_id] = {"stop": False, "lock": Lock()}
+    if r_streams.exists(f"stream:{stream_id}"):
+        return jsonify({"error": f"Stream {stream_id} is already in progress"}), 409
+
+    r_streams.hset(f"stream:{stream_id}", mapping={"stop": 0})
+    r_streams.expire(f"stream:{stream_id}", STREAM_TTL)
 
     def generate_stream():
+        nonlocal error
         try:
-            with active_streams[stream_id]["lock"]:
-                print(f"\n\n*** TESTING CHAT ***\n")
-                
-                # Step 1: Retrieve relevant documents first (stream retrieval)
-                retriever_results = semantic_retriever.get_relevant_documents(user_prompt)
-                sources = []
-                for doc in retriever_results:
-                    sources.append(doc.metadata.get("source", "Unknown Source"))
-                
-                prompt, memory = get_prompt_template(
-                    model_name=MODEL_NAME, user_prompt=user_prompt, use_context=use_context
-                )
+            r_streams.expire(f"stream:{stream_id}", STREAM_TTL)
+            stop_handler = StopStreamHandler(stream_id, r_streams)
+            
+            # Use documents context
+            if use_context:
+                print('\n \n')
+                print('\n \n')
+                print('*** Using chat with CONTEXT ***')
+                print(f'User prompt: {user_prompt}')
+                print(f"It's first query: {'yes' if first_query else 'no'}")
+                print('\n \n')
+                print('\n \n')
+
+                if from_source == 'snok':
+                    prompt, memory = get_prompt_template(
+                        system_prompt=SNOK_SYSTEM_PROMPT,
+                        model_name=MODEL_NAME, 
+                        user_prompt=user_prompt, 
+                        use_context=use_context
+                    )
+                else:
+                    prompt, memory = get_prompt_template(
+                        model_name=MODEL_NAME, 
+                        user_prompt=user_prompt, 
+                        use_context=use_context
+                    )
+                    
+
+                # Build stream chain
+                retriever = hybrid_retriever_snok if from_source == 'snok' else hybrid_retriever
                 question_answer_chain = create_stuff_documents_chain(LLM, prompt)
-                rag_chain = create_retrieval_chain(semantic_retriever, question_answer_chain)
+                rag_chain = create_retrieval_chain(retriever, question_answer_chain)
 
                 chain = rag_chain.pick("answer")
 
+                # Appending the stop callback to existing callbacks (so we don't overwrite the default stream logging)
+                existing_callbacks = getattr(LLM, "callbacks", [])
+                stop_handler = StopStreamHandler(stream_id, r_streams)
+                LLM.callbacks = existing_callbacks + [stop_handler]
+
+                answer = ''
+
                 for token in chain.stream({"input": user_prompt}):
-                    if active_streams.get(stream_id, {}).get("stop"):
+                    if r_streams.hget(f"stream:{stream_id}", "stop") == b"1":
                         logging.info(f"Stopping stream {stream_id} due to user request.")
                         break  # Exit the loop if stop signal is received
+                    answer += token
                     yield token
-                print("\n\n")
+                        
+                logging.info('\n \n')
+                logging.info('\n \n')
+                    
+                # ----- Source generation -----
+                source_retriever = semantic_retriever_snok if from_source == 'snok' else semantic_retriever
+                retriever_results_with_scores = source_retriever.vectorstore.similarity_search_with_relevance_scores(answer, k=SEMANTIC_K_DOCS)
 
-                # Step 4: Stream sources as they are retrieved
+                for doc, score in retriever_results_with_scores:
+                    logging.info(f"Document: {doc.metadata.get('source', 'Unknown Source')} | Score: {score}")
+
+                HIGH_THRESHOLD = 0.71
+                MID_THRESHOLD = 0.61
+
+                filtered_results = sorted(
+                    [(doc, score) for doc, score in retriever_results_with_scores if score >= HIGH_THRESHOLD],
+                    key=lambda x: x[1], 
+                    reverse=True
+                )
+                
+                if len(filtered_results) == 0:
+                    filtered_results = sorted(
+                        [(doc, score) for doc, score in retriever_results_with_scores if score >= MID_THRESHOLD],
+                        key=lambda x: x[1], 
+                        reverse=True
+                    )
+
+                retriever_results = [doc for doc, score in filtered_results]
+
+                # If sources don't enter the threshold then we check if the slopoe 
+                # between the first two is steep enough to return the first one.
+                if not filtered_results:
+                    seen = set()
+                    unique_results = []
+                    
+                    for doc, score in retriever_results_with_scores:
+                        doc_source = doc.metadata.get("source", "Unknown Source")
+                        if doc_source not in seen:
+                            seen.add(doc_source)
+                            unique_results.append((doc, score))
+                    sorted_results = sorted(unique_results, key=lambda x: x[1], reverse=True)
+
+                    # if len(sorted_results) > 1 and (sorted_results[0][1] - sorted_results[1][1]) >= 0.025:
+                    if len(sorted_results) > 1 and (sorted_results[0][1] - sorted_results[1][1]) >= 0.1:
+                        retriever_results = [sorted_results[0][0]]
+
+                sources = []
+                sources_returned = 'no'
+                unique_sources = set()
+                for doc in retriever_results:
+                    source = doc.metadata.get("source", "Unknown Source")
+                    if source not in unique_sources and not "AUX_DOCS" in source:
+                        unique_sources.add(source)
+                        sources.append(source)
+
                 if sources:
-                    yield f"\n <br/><br/><strong>Sources:</strong>"
-                    for source in sources:
-                        yield f"\n- {source}"
+                    source_title = "Sources:" if len(sources) > 1 else "Source:"
+                    yield f"\n <br/><br/><strong>{source_title}</strong>"
+                    
+                    for i, source in enumerate(sources[:4]):
+                        unreleased_mark = ' (unreleased)' if 'UNRELEASED' in source else ''
+                        time.sleep(0.15)  # Simulating streaming effect
+                        sources_returned = 'yes'
+                        yield f"\n- {source}{unreleased_mark}"
+                logging.info('\n \n')
+                logging.info(f"Sources returned: {sources_returned}")
+                logging.info('\n \n')
+                
+                if from_source == 'snok':
+                    snok_docs = hybrid_retriever_snok.get_relevant_documents(user_prompt)
+                    if len(snok_docs):
+                        yield f"\n\n\nSnok Retriever:\n"
+                        for doc in snok_docs:
+                            source_title = doc.metadata.get('source','?').split(']')[0].replace('[','')
+                            yield f"\n\nSource={source_title} | Score={doc.metadata.get('score')}\n"
 
+
+            # Chat with LLM only
+            else:
+                print(f"\n\n*** Using direct chat with LLM ***\n")
+                prompt, memory = get_prompt_template(
+                    model_name=MODEL_NAME, user_prompt=user_prompt, use_context=use_context
+                )
+                input_data = {"context": None, "question": user_prompt, "history": use_history}
+
+                try:
+                    print("\nAnswer: \n")
+                    llm_chain = StreamingChain(LLM, prompt)
+                    for token in llm_chain.stream(input_data=input_data):
+                        if r_streams.hget(f"stream:{stream_id}", "stop") == b"1":
+                            logging.info(f"Stopping stream {stream_id} due to user request.")
+                            break  # Exit the loop if stop signal is received
+                        yield token.encode("utf-8")
+                    print("\n\n")
+                except Exception as e:
+                    logging.error(f"Error during streaming: {str(e)}")
+                    yield "Error occurred during streaming".encode("utf-8")
+
+        except KeyboardInterrupt:
+            logging.info(f"Stream {stream_id} stopped by user")
+            
+        except Exception as e:
+            error = str(e)
+            logging.info(f">>> An error occurred while generating the reponse: {error}", exc_info=True)
+            response.headers["error"] = error
+            
+            error_user_message = random.choice(TECH_ISSUE_LLM)
+            error_message = f"""\n{error_user_message}
+            \nPlease try again or start a new chat.
+            \nVisit [Down@Volvo](https://down.volvocars.net?system=veronica) for more info."""
+            
+            yield '\n'
+            for word in error_message.split(' '):
+                time.sleep(0.1)
+                yield f"{word} "
+        
         finally:
-            with stream_lock:
-                active_streams.pop(stream_id, None)
+            r_streams.delete(f"stream:{stream_id}")
 
     response = Response(generate_stream(), mimetype="text/plain")
     response.headers["Stream-ID"] = stream_id
     logging.info(f">>> Generated response for stream ID: {stream_id}")
-    logging.info(">>> Exiting /api/prompt_route_test")
+    logging.info(">>> Exiting /api/prompt_route")
     return response
 
 

@@ -326,9 +326,9 @@ def prompt_route():
                 chain = rag_chain.pick("answer")
 
                 # Appending the stop callback to existing callbacks (so we don't overwrite the default stream logging)
-                existing_callbacks = getattr(LLM, "callbacks", [])
-                stop_handler = StopStreamHandler(stream_id, r_streams)
-                LLM.callbacks = existing_callbacks + [stop_handler]
+                # existing_callbacks = getattr(LLM, "callbacks", [])
+                # stop_handler = StopStreamHandler(stream_id, r_streams)
+                # LLM.callbacks = existing_callbacks + [stop_handler]
 
                 answer = ''
 

@@ -117,7 +117,7 @@ DB = Chroma(
 semantic_retriever = DB.as_retriever(
     search_type="similarity",
     similarity_metric="cosine",
-    search_kwargs={"k": 20}
+    search_kwargs={"k": FETCH_K_DOCS}
 )
 
 # Hybrid retriever
@@ -144,7 +144,7 @@ SNOK_DB = Chroma(
 semantic_retriever_snok = SNOK_DB.as_retriever(
     search_type="similarity",
     similarity_metric="cosine",
-    search_kwargs={"k": 20}
+    search_kwargs={"k": FETCH_K_DOCS}
 )
 
 # Hybrid retriever for Snok
@@ -326,9 +326,9 @@ def prompt_route():
                 chain = rag_chain.pick("answer")
 
                 # Appending the stop callback to existing callbacks (so we don't overwrite the default stream logging)
-                # existing_callbacks = getattr(LLM, "callbacks", [])
-                # stop_handler = StopStreamHandler(stream_id, r_streams)
-                # LLM.callbacks = existing_callbacks + [stop_handler]
+                existing_callbacks = getattr(LLM, "callbacks", [])
+                stop_handler = StopStreamHandler(stream_id, r_streams)
+                LLM.callbacks = existing_callbacks + [stop_handler]
 
                 answer = ''
 
@@ -900,6 +900,7 @@ def search_vectors():
         query = data['query']
         full_text = data['fulltext']
         k = int(data['k']) if data['k'] else 0
+        source = data['source']
 
         if not query:
             return jsonify({"error": "Query parameter is required"}), 400
@@ -907,12 +908,13 @@ def search_vectors():
         if full_text:
             special_words = get_uncommon_or_identifier_words(query)
             bm25_query = " ".join(quote_fts_token(w) for w in special_words)
-            bm25_docs = search_fts(bm25_query, k or FULLTEXT_K_DOCS, db_path="HPx.db")
+            bm25_docs = search_fts(bm25_query, k or FULLTEXT_K_DOCS, db_path=f"{source}.db")
             bm25_docs_dicts = [doc.page_content for doc in bm25_docs]
             found_exact = any(query.lower() in doc_text.lower() for doc_text in bm25_docs_dicts)
             return jsonify({"query": query, "matches": bm25_docs_dicts, "exact": found_exact})
         
-        results = hybrid_retriever.get_relevant_documents(query)[:k]
+        search_retriever = hybrid_retriever_snok if source == 'SNOK' else hybrid_retriever
+        results = search_retriever.get_relevant_documents(query)[:k]
         semantic_docs = [document_to_dict(d) for d in results]
         results_serializable = [doc["page_content"] for doc in semantic_docs]
         found_exact = any(query.lower() in doc_text.lower() for doc_text in results_serializable)

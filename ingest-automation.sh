@@ -18,7 +18,7 @@ fi
 /home/local/VCCNET/gsotelo/anaconda3/envs/localGPT/bin/python ingest.py
 
 # Change user permissions on DB
-chmod 777 /chatbot/source/api/DB
+chmod -R 777 /chatbot/source/api/DB
 
 # Start the Gunicorn service
 systemctl start gunicorn.service

@@ -47,6 +47,19 @@ SEMANTIC_K_DOCS = int(os.getenv("SEMANTIC_K_DOCS", 6)) # 7
 FULLTEXT_K_DOCS = int(os.getenv("FULLTEXT_K_DOCS", 2))
 COLLECTION_METADATA = {"hnsw:space": "cosine"}
 
+CATEGORY_MAP = {
+    "HPx": [],  # special: ingests ALL files
+    "HPXA": ["hpxa"],
+    "SNOK": ["snok"],
+    "HPSDK": ["hp sdk", "hpsdk"],
+    "CSTOOL": ["cs tool", "cstool", "bazel"],
+    "CSSTATS": ["cs stats", "csstats"],
+    "ZUUL": ["zuul"],
+    "SIMULINK": ["simulink"],
+    "SPA3": ["spa3"],
+    "SAFETYMANUAL": ["safety manual", "safetymanual"],
+}
+
 SNOK_SYSTEM_PROMPT =  """
 You are Snoky, a helpful assistant from Snok (a Python library which lets you communicate with services on the HPA and create service stubs.) 
 

@@ -50,7 +50,8 @@ from constants import (
     LAMBDA_MULT,
     SNOK_SYSTEM_PROMPT,
     PERSIST_DIRECTORY_SNOK,
-    TECH_ISSUE_LLM
+    TECH_ISSUE_LLM,
+    CATEGORY_MAP
 )
 
 from hybrid_retriever import (
@@ -104,58 +105,31 @@ gc.collect()
 # Load embeddings Model
 EMBEDDINGS = get_embeddings(DEVICE_TYPE)
 
-# ------- HPx retrieval ---------
-# Load the vectorstore for HPx
-DB = Chroma(
-    persist_directory=PERSIST_DIRECTORY,
-    embedding_function=EMBEDDINGS,
-    client_settings=CHROMA_SETTINGS,
-    collection_metadata=COLLECTION_METADATA
-)
+# Create retrievers
+RETRIEVER_MAP = {}
+for category in CATEGORY_MAP.keys():
+    RETRIEVER_MAP[category] = {}
+    category_dir = os.path.join(PERSIST_DIRECTORY, category.lower())
+    
+    RETRIEVER_MAP[category]['DB'] = Chroma(
+        persist_directory=category_dir,
+        embedding_function=EMBEDDINGS,
+        client_settings=CHROMA_SETTINGS,
+        collection_metadata=COLLECTION_METADATA
+    )
 
-# Semantic retriever
-semantic_retriever = DB.as_retriever(
-    search_type="similarity",
-    similarity_metric="cosine",
-    search_kwargs={"k": FETCH_K_DOCS}
-)
+    RETRIEVER_MAP[category]['semantic_retriever']  = RETRIEVER_MAP[category]['DB'].as_retriever(
+        search_type="similarity",
+        similarity_metric="cosine",
+        search_kwargs={"k": SEMANTIC_K_DOCS}
+    )
 
-# Hybrid retriever
-hybrid_retriever = HybridRetriever(
-    semantic_retriever=semantic_retriever,
-    k_bm25=FULLTEXT_K_DOCS,
-    k_semantic=SEMANTIC_K_DOCS,
-    db_path="HPx.db",
-)
-
-# ------- HPx ---------
-
-
-# ------- Snok retrieval ---------
-# Load the vectorstore for Snok
-SNOK_DB = Chroma(
-    persist_directory=PERSIST_DIRECTORY_SNOK,
-    embedding_function=EMBEDDINGS,
-    client_settings=CHROMA_SETTINGS,
-    collection_metadata=COLLECTION_METADATA
-)
-
-# Semantic retriever for Snok
-semantic_retriever_snok = SNOK_DB.as_retriever(
-    search_type="similarity",
-    similarity_metric="cosine",
-    search_kwargs={"k": FETCH_K_DOCS}
-)
-
-# Hybrid retriever for Snok
-hybrid_retriever_snok = HybridRetriever(
-    semantic_retriever=semantic_retriever_snok,
-    k_bm25=FULLTEXT_K_DOCS,
-    k_semantic=4,
-    use_bm25=False,
-    use_scores=True
-)
-# ------- Snok ---------
+    RETRIEVER_MAP[category]['hybrid_retriever']  = HybridRetriever(
+        semantic_retriever=RETRIEVER_MAP[category]['semantic_retriever'],
+        k_bm25=FULLTEXT_K_DOCS,
+        k_semantic=SEMANTIC_K_DOCS,
+        db_path=f"{category}.db",
+    )
 
 
 # LLM load
@@ -259,6 +233,8 @@ def prompt_route():
     logging.info("\n")
     logging.info(f"\nUser Prompt: {user_prompt}")
     logging.info("\n")
+    
+    from_source = 'SNOK' if from_source == 'snok' else from_source
 
     if stop:
         logging.info(f"Attempting to stop stream ID: {stream_id}")
@@ -303,7 +279,7 @@ def prompt_route():
                 print('\n \n')
                 print('\n \n')
 
-                if from_source == 'snok':
+                if from_source == 'SNOK':
                     prompt, memory = get_prompt_template(
                         system_prompt=SNOK_SYSTEM_PROMPT,
                         model_name=MODEL_NAME, 
@@ -319,7 +295,7 @@ def prompt_route():
                     
 
                 # Build stream chain
-                retriever = hybrid_retriever_snok if from_source == 'snok' else hybrid_retriever
+                retriever = RETRIEVER_MAP[from_source or 'HPx']['hybrid_retriever']
                 question_answer_chain = create_stuff_documents_chain(LLM, prompt)
                 rag_chain = create_retrieval_chain(retriever, question_answer_chain)
 
@@ -343,7 +319,7 @@ def prompt_route():
                 logging.info('\n \n')
                     
                 # ----- Source generation -----
-                source_retriever = semantic_retriever_snok if from_source == 'snok' else semantic_retriever
+                source_retriever = RETRIEVER_MAP[from_source or 'HPx']['semantic_retriever']
                 retriever_results_with_scores = source_retriever.vectorstore.similarity_search_with_relevance_scores(answer, k=SEMANTIC_K_DOCS)
 
                 for doc, score in retriever_results_with_scores:
@@ -406,8 +382,8 @@ def prompt_route():
                 logging.info(f"Sources returned: {sources_returned}")
                 logging.info('\n \n')
                 
-                if from_source == 'snok':
-                    snok_docs = hybrid_retriever_snok.get_relevant_documents(user_prompt)
+                if from_source == 'SNOK':
+                    snok_docs = RETRIEVER_MAP[from_source]['hybrid_retriever'].get_relevant_documents(user_prompt)
                     if len(snok_docs):
                         yield f"\n\n\nSnok Retriever:\n"
                         for doc in snok_docs:
@@ -481,6 +457,8 @@ def prompt_route_test():
     logging.info(f"\nUser Prompt: {user_prompt}")
     logging.info("\n")
 
+    from_source = 'SNOK' if from_source == 'snok' else from_source
+
     if stop:
         logging.info(f"Attempting to stop stream ID: {stream_id}")
 
@@ -524,7 +502,7 @@ def prompt_route_test():
                 print('\n \n')
                 print('\n \n')
 
-                if from_source == 'snok':
+                if from_source == 'SNOK':
                     prompt, memory = get_prompt_template(
                         system_prompt=SNOK_SYSTEM_PROMPT,
                         model_name=MODEL_NAME, 
@@ -540,7 +518,7 @@ def prompt_route_test():
                     
 
                 # Build stream chain
-                retriever = hybrid_retriever_snok if from_source == 'snok' else hybrid_retriever
+                retriever = RETRIEVER_MAP[from_source or 'HPx']['hybrid_retriever']
                 question_answer_chain = create_stuff_documents_chain(LLM, prompt)
                 rag_chain = create_retrieval_chain(retriever, question_answer_chain)
 
@@ -564,7 +542,7 @@ def prompt_route_test():
                 logging.info('\n \n')
                     
                 # ----- Source generation -----
-                source_retriever = semantic_retriever_snok if from_source == 'snok' else semantic_retriever
+                source_retriever = RETRIEVER_MAP[from_source or 'HPx']['semantic_retriever']
                 retriever_results_with_scores = source_retriever.vectorstore.similarity_search_with_relevance_scores(answer, k=SEMANTIC_K_DOCS)
 
                 for doc, score in retriever_results_with_scores:
@@ -627,8 +605,8 @@ def prompt_route_test():
                 logging.info(f"Sources returned: {sources_returned}")
                 logging.info('\n \n')
                 
-                if from_source == 'snok':
-                    snok_docs = hybrid_retriever_snok.get_relevant_documents(user_prompt)
+                if from_source == 'SNOK':
+                    snok_docs = RETRIEVER_MAP[from_source]['hybrid_retriever'].get_relevant_documents(user_prompt)
                     if len(snok_docs):
                         yield f"\n\n\nSnok Retriever:\n"
                         for doc in snok_docs:
@@ -913,7 +891,7 @@ def search_vectors():
             found_exact = any(query.lower() in doc_text.lower() for doc_text in bm25_docs_dicts)
             return jsonify({"query": query, "matches": bm25_docs_dicts, "exact": found_exact})
         
-        search_retriever = hybrid_retriever_snok if source == 'SNOK' else hybrid_retriever
+        search_retriever = RETRIEVER_MAP[source]['hybrid_retriever']
         results = search_retriever.get_relevant_documents(query)[:k]
         semantic_docs = [document_to_dict(d) for d in results]
         results_serializable = [doc["page_content"] for doc in semantic_docs]

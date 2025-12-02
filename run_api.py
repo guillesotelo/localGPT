@@ -230,11 +230,12 @@ def prompt_route():
     stream_id = int(request.form.get("stream_id", str(int(time.time() * 1000))))
     stop = request.form.get("stop", "false").lower() == "true"
     error = ''
-    logging.info("\n")
-    logging.info(f"\nUser Prompt: {user_prompt}")
-    logging.info("\n")
     
-    from_source = 'SNOK' if from_source == 'snok' else from_source
+    if not RETRIEVER_MAP[from_source]:
+        print('\n')
+        print(f'Category soruce: {from_source} not found. Falling back to HPx')
+        print('\n')
+        from_source = 'HPx'
 
     if stop:
         logging.info(f"Attempting to stop stream ID: {stream_id}")
@@ -275,8 +276,10 @@ def prompt_route():
                 print('\n \n')
                 print('*** Using chat with CONTEXT ***')
                 print(f'User prompt: {user_prompt}')
-                print(f"It's first query: {'yes' if first_query else 'no'}")
                 print('\n \n')
+                print(f"Source: {from_source}")
+                print('\n \n')
+                print(f"First query: {'yes' if first_query else 'no'}")
                 print('\n \n')
 
                 if from_source == 'SNOK':
@@ -382,13 +385,13 @@ def prompt_route():
                 logging.info(f"Sources returned: {sources_returned}")
                 logging.info('\n \n')
                 
-                if from_source == 'SNOK':
-                    snok_docs = RETRIEVER_MAP[from_source]['hybrid_retriever'].get_relevant_documents(user_prompt)
-                    if len(snok_docs):
-                        yield f"\n\n\nSnok Retriever:\n"
-                        for doc in snok_docs:
-                            source_title = doc.metadata.get('source','?').split(']')[0].replace('[','')
-                            yield f"\n\nSource={source_title} | Score={doc.metadata.get('score')}\n"
+                # if from_source == 'SNOK':
+                #     snok_docs = RETRIEVER_MAP[from_source]['hybrid_retriever'].get_relevant_documents(user_prompt)
+                #     if len(snok_docs):
+                #         yield f"\n\n\nSnok Retriever:\n"
+                #         for doc in snok_docs:
+                #             source_title = doc.metadata.get('source','?').split(']')[0].replace('[','')
+                #             yield f"\n\nSource={source_title} | Score={doc.metadata.get('score')}\n"
 
 
             # Chat with LLM only
@@ -453,12 +456,13 @@ def prompt_route_test():
     stream_id = int(request.form.get("stream_id", str(int(time.time() * 1000))))
     stop = request.form.get("stop", "false").lower() == "true"
     error = ''
-    logging.info("\n")
-    logging.info(f"\nUser Prompt: {user_prompt}")
-    logging.info("\n")
-
-    from_source = 'SNOK' if from_source == 'snok' else from_source
-
+    
+    if not RETRIEVER_MAP[from_source]:
+        print('\n')
+        print(f'Category soruce: {from_source} not found. Falling back to HPx')
+        print('\n')
+        from_source = 'HPx'
+        
     if stop:
         logging.info(f"Attempting to stop stream ID: {stream_id}")
 
@@ -496,10 +500,12 @@ def prompt_route_test():
             if use_context:
                 print('\n \n')
                 print('\n \n')
-                print('*** Using chat with CONTEXT ***')
+                print('*** Using TEST chat with CONTEXT ***')
                 print(f'User prompt: {user_prompt}')
-                print(f"It's first query: {'yes' if first_query else 'no'}")
                 print('\n \n')
+                print(f"Source: {from_source}")
+                print('\n \n')
+                print(f"First query: {'yes' if first_query else 'no'}")
                 print('\n \n')
 
                 if from_source == 'SNOK':
@@ -604,14 +610,6 @@ def prompt_route_test():
                 logging.info('\n \n')
                 logging.info(f"Sources returned: {sources_returned}")
                 logging.info('\n \n')
-                
-                if from_source == 'SNOK':
-                    snok_docs = RETRIEVER_MAP[from_source]['hybrid_retriever'].get_relevant_documents(user_prompt)
-                    if len(snok_docs):
-                        yield f"\n\n\nSnok Retriever:\n"
-                        for doc in snok_docs:
-                            source_title = doc.metadata.get('source','?').split(']')[0].replace('[','')
-                            yield f"\n\nSource={source_title} | Score={doc.metadata.get('score')}\n"
 
 
             # Chat with LLM only

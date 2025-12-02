@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 ROOT_DIRECTORY = os.path.dirname(os.path.realpath(__file__))
 # SOURCE_DIRECTORY = f"{ROOT_DIRECTORY}/SOURCE_DOCUMENTS"
 SOURCE_DIRECTORY = os.getenv("SOURCE_DIRECTORY", "/var/lib/hpchatbot/latest")
+LEGACY_DIRECTORY = "/var/lib/hpchatbot/_archive/hpdevp.1761279507"
 SOURCE_DIRECTORY_SNOK = f"{ROOT_DIRECTORY}/SNOK/DOCS"
 AUX_DOCS = '/chatbot/source/api/AUX_DOCS'
 PERSIST_DIRECTORY = f"{ROOT_DIRECTORY}/DB"
@@ -49,11 +50,13 @@ COLLECTION_METADATA = {"hnsw:space": "cosine"}
 
 CATEGORY_MAP = {
     "HPx": [],  # special: ingests ALL files
+    "LEGACY_HPx": ['special legacy DB, no match in filenames'],
     "HPXA": ["hpxa"],
     "SNOK": ["snok"],
     "HPSDK": ["hp sdk", "hpsdk"],
     "CSTOOL": ["cs tool", "cstool", "bazel"],
     "CSSTATS": ["cs stats", "csstats"],
+    "MOCK": ["mock"],
     "ZUUL": ["zuul"],
     "SIMULINK": ["simulink"],
     "SPA3": ["spa3"],

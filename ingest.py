@@ -3,28 +3,22 @@ import os
 import shutil
 import psutil
 import time
-import stat
-import pickle
 import sqlite3
 import json
 
 import click
 import torch
-from langchain.docstore.document import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import Chroma
 from chromadb import PersistentClient
 
 import nltk
-from utils import get_embeddings, process_document_with_tables
+from utils import get_embeddings
 from constants import (
     CHROMA_SETTINGS,
     DOCUMENT_MAP,
-    EMBEDDING_MODEL_NAME,
     PERSIST_DIRECTORY,
-    PERSIST_DIRECTORY_SNOK,
     SOURCE_DIRECTORY,
-    SOURCE_DIRECTORY_SNOK,
     AUX_DOCS,
     CHUNK_SIZE,
     CHUNK_OVERLAP,

@@ -65,7 +65,9 @@ from threading import Lock
 from utils import (
     get_embeddings,
     document_to_dict,
-    StopStreamHandler
+    StopStreamHandler,
+    delete_file_later,
+    NonClosingBytesIO
     )
 import re
 # For enterprise use
@@ -1036,6 +1038,139 @@ def get_app_version():
     
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    
+    
+# ----------------------------
+# DLT - GDPR COMPLIANCE ROTUES
+# ----------------------------
+from gdpr_scan_regex import process_logs, filter_and_mask_dlt
+from convert_dlt_to_json import parse_original_logs
+import uuid
+from flask import send_file
+import io
+
+
+UPLOAD_DIR = "uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+app.config["UPLOAD_FOLDER"] = UPLOAD_DIR
+app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024  # 200MB limit
+
+# ----------------------------
+# Upload DLT file
+# ----------------------------
+@app.route("/api/upload-dlt", methods=["POST"])
+def upload_file():
+    if "file" not in request.files:
+        return jsonify({"error": "No file part"}), 400
+
+    logging.info('Uploading new DLT file...')
+    file = request.files["file"]
+    if file.filename == "":
+        return jsonify({"error": "No selected file"}), 400
+
+    # Create a unique file ID
+    file_id = str(uuid.uuid4())
+    ext = os.path.splitext(file.filename)[1]
+    saved_filename = f"{file_id}{ext}"
+    file_path = os.path.join(UPLOAD_DIR, saved_filename)
+    file.save(file_path)
+    logging.info(f"Done uploading: {file.filename}")
+    
+    delete_file_later(file_path, delay_seconds=3600)
+
+    return jsonify({"file_id": file_id}), 200
+
+# ----------------------------
+# Analyze file by ID
+# ----------------------------
+@app.route("/api/process-dlt/<file_id>", methods=["GET"])
+def analyze_file(file_id):
+    try:
+        # Find the file by file_id (assume .dlt extension)
+        matching_files = [f for f in os.listdir(UPLOAD_DIR) if f.startswith(file_id) and f.endswith('.dlt')]
+        if not matching_files:
+            return jsonify({"error": "File not found"}), 404
+
+        file_path = os.path.join(UPLOAD_DIR, matching_files[0])
+        json_path = file_path.replace(".dlt", ".json")
+        logging.info(f"\nAnalyzing: {matching_files[0]}")
+
+        # Convert DLT -> JSON
+        parse_original_logs(input_file=file_path, output_file=json_path)
+
+        # Load JSON and run GDPR scan
+        with open(json_path, "r", encoding="utf-8") as f:
+            logs = json.load(f)
+
+        logging.info(f"Processing logs and creating flags...")
+        processed_json = process_logs(logs)
+
+        flagged_path = json_path.replace(".json", "_flagged.json")
+        
+        with open(flagged_path, "w", encoding="utf-8") as f:
+            json.dump(processed_json, f, indent=2, ensure_ascii=False)
+        
+        logging.info(f"Done analyzing: {matching_files[0]}")
+        
+        # Remove after 1 hour
+        delete_file_later(json_path, delay_seconds=3600)
+
+        return jsonify(processed_json), 200
+
+    except Exception as e:
+        logging.error("Error analyzing file %s: %s", file_id, str(e))
+        return jsonify({"error": "Failed to process file"}), 500
+
+
+# ----------------------------
+# Process & mask DLT file by ID and return masked DLT
+# ----------------------------
+@app.route("/api/mask-dlt/<file_id>", methods=["GET"])
+def mask_dlt_file(file_id):
+    try:
+        # Find JSON analysis for this file
+        json_files = [f for f in os.listdir(UPLOAD_DIR) if f.startswith(file_id) and f.endswith("_flagged.json")]
+        if not json_files:
+            return jsonify({"error": "JSON file not found"}), 404
+
+        json_path = os.path.join(UPLOAD_DIR, json_files[0])
+        logging.info(f"Found file for maskin: {json_path}")
+
+        # Load processed logs to determine flagged entries
+        with open(json_path, "r", encoding="utf-8") as f:
+            processed_logs = json.load(f)
+        flagged_timestamps = {log["timestamp"] for log in processed_logs if log.get("findings")}
+        logging.info(f"Found {len(flagged_timestamps)} flagged logs")
+        
+        # Original DLT path
+        dlt_path = json_path.replace("_flagged.json", ".dlt")
+        if not os.path.exists(dlt_path):
+            return jsonify({"error": "Original DLT file missing"}), 500
+
+        # Output masked DLT in memory
+        logging.info(f"Generating new DLT file from flags...")
+        output_buffer = NonClosingBytesIO()
+
+        # Use imported filter_and_mask_dlt function
+        filter_and_mask_dlt(
+            input_file=dlt_path,
+            output_file=output_buffer,  # can pass BytesIO object
+            flagged_timestamps=flagged_timestamps
+        )
+
+        logging.info(f"Done generating masked DLT.")
+        # Return masked DLT
+        return send_file(
+            io.BytesIO(output_buffer.getvalue()),
+            mimetype="application/octet-stream",
+            download_name=f"{file_id}_masked.dlt",
+            as_attachment=True
+        )
+
+    except Exception as e:
+        logging.error(f"Error masking DLT {file_id}: {e}", exc_info=True)
+        return jsonify({"error": "Failed to mask file"}), 500
+
 
 
 #  ---------- END OF API ROUTES ----------

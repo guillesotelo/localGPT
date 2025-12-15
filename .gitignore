@@ -175,3 +175,4 @@ AUX_DOCS/*
 !AUX_DOCS/.gitkeep
 
 /node_modules
+/data

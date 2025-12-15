@@ -10,7 +10,7 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 
 from transformers import AutoModel, AutoTokenizer
 import json
-
+import io
 from langchain.schema import BaseRetriever, Document
 from typing import List, Any
 
@@ -177,3 +177,22 @@ class StopStreamHandler(BaseCallbackHandler):
     def on_llm_new_token(self, token: str, **kwargs):
         if self.r.hget(f"stream:{self.stream_id}", "stop") == b"1":
             raise KeyboardInterrupt("User requested stop")
+
+
+
+import threading
+import time
+def delete_file_later(file_path, delay_seconds=3600):
+    """Delete a file after a delay (default 1 hour)."""
+    def _delete():
+        time.sleep(delay_seconds)
+        try:
+            os.remove(file_path)
+            print(f"Deleted file: {file_path}")
+        except FileNotFoundError:
+            pass
+    threading.Thread(target=_delete, daemon=True).start()
+    
+class NonClosingBytesIO(io.BytesIO):
+    def close(self):
+        pass

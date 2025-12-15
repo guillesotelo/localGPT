@@ -657,9 +657,10 @@ def prompt_route_test():
             response.headers["error"] = error
             
             error_user_message = random.choice(TECH_ISSUE_LLM)
+            ERROR_DOWN_URL = os.getenv('ERROR_DOWN_URL', 'nourl')
             error_message = f"""\n{error_user_message}
             \nPlease try again or start a new chat.
-            \nVisit [Down@Volvo](https://down.volvocars.net?system=veronica) for more info."""
+            \nVisit [Down@Volvo]({ERROR_DOWN_URL}) for more info."""
             
             yield '\n'
             for word in error_message.split(' '):

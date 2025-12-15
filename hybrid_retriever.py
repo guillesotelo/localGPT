@@ -169,7 +169,7 @@ class HybridRetriever(BaseRetriever):
                     doc.metadata.setdefault("score", 0.0)
 
                     logging.info(
-                        f"[Retriever BM25] Source={doc.metadata.get('source','?')} | Score={doc.metadata.get('score')} | Chunk={doc.page_content}"
+                        f"[Retriever BM25] Source={doc.metadata.get('source','?')} | Score={doc.metadata.get('score')}"
                     )
 
                 seen = set()

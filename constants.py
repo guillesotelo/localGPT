@@ -93,6 +93,19 @@ TECH_ISSUE_LLM = [
     "Thank you for your patience! I'm unavailable right now due to a system update or issue. Please come back shortly, and I'll do my best to help you."
 ]
 
+OOS_MESSAGE = [
+  "This question falls outside the scope of our available documentation.",
+  "Unfortunately, this topic is not covered by our current documentation.",
+  "This question is beyond the scope of the documentation we have at the moment.",
+  "We're sorry, but this question is not addressed within our documentation.",
+  "This topic is outside the scope of the documentation currently available to us.",
+  "At this time, our documentation does not cover this particular question.",
+  "We're afraid this question is not within the scope of our documented materials.",
+  "This inquiry goes beyond what is covered in our existing documentation.",
+  "Our documentation does not currently include information related to this question.",
+  "We're sorry, but this question is outside the scope of the resources we have documented."
+]
+
 # https://python.langchain.com/en/latest/_modules/langchain/document_loaders/excel.html#UnstructuredExcelLoader
 DOCUMENT_MAP = {
     ".html": UnstructuredHTMLLoader,

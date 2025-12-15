@@ -51,7 +51,8 @@ from constants import (
     SNOK_SYSTEM_PROMPT,
     PERSIST_DIRECTORY_SNOK,
     TECH_ISSUE_LLM,
-    CATEGORY_MAP
+    CATEGORY_MAP,
+    OOS_MESSAGE
 )
 
 from hybrid_retriever import (
@@ -236,8 +237,11 @@ def prompt_route():
     
     if not RETRIEVER_MAP[from_source]:
         print('\n')
-        print(f'Category soruce: {from_source} not found. Falling back to HPx')
-        print('\n')
+        logging.info(f"""
+                     
+                     Category soruce: {from_source} not found. Falling back to HP
+                     
+        """)
         from_source = 'HPx'
 
     if stop:
@@ -275,15 +279,15 @@ def prompt_route():
             
             # Use documents context
             if use_context:
-                print('\n \n')
-                print('\n \n')
-                print('*** Using chat with CONTEXT ***')
-                print(f'User prompt: {user_prompt}')
-                print('\n \n')
-                print(f"Source: {from_source}")
-                print('\n \n')
-                print(f"First query: {'yes' if first_query else 'no'}")
-                print('\n \n')
+                logging.info(f"""
+                
+                Using chat with CONTEXT
+                
+                User prompt: {user_prompt}
+                Source: {from_source}
+                First query: {'yes' if first_query else 'no'}
+                
+                """)
 
                 if from_source == 'SNOK':
                     prompt, memory = get_prompt_template(
@@ -303,7 +307,8 @@ def prompt_route():
                 retriever = RETRIEVER_MAP[from_source or 'HPx']['hybrid_retriever']
                     
                 # ----- Source extraction -----
-                results_with_scores = retriever.get_relevant_documents(user_prompt)
+                curated_prompt = user_prompt.split('\n<<retry_')[0]
+                results_with_scores = retriever.get_relevant_documents(curated_prompt)
 
                 for doc in results_with_scores:
                     logging.info(f"Document: {doc.metadata.get('source', 'Unknown Source')} | Score: {doc.metadata.get('score', 0)}")
@@ -311,17 +316,48 @@ def prompt_route():
                 HIGH_THRESHOLD = 0.71
                 MID_THRESHOLD = 0.61
 
-                filtered_results = sorted(
-                    [(doc, doc.metadata.get('score', 0)) for doc in results_with_scores if doc.metadata.get('score', 0) >= HIGH_THRESHOLD],
-                    key=lambda x: x[1], 
-                    reverse=True
-                )
-                
-                # Testing OOS questions (high threshold)
+                filtered_results = [
+                    doc for doc, score in sorted(
+                        [(doc, doc.metadata.get('score', 0)) for doc in results_with_scores
+                        if doc.metadata.get('score', 0) >= HIGH_THRESHOLD],
+                        key=lambda x: x[1],
+                        reverse=True
+                    )
+                ]
+
                 if len(filtered_results) == 0:
-                    oos_message = "This question is outside the scope of our documentation."
+                    filtered_results = [
+                        doc for doc, score in sorted(
+                           [(doc, doc.metadata.get('score', 0)) for doc in results_with_scores
+                           if doc.metadata.get('score', 0) >= HIGH_THRESHOLD],
+                           key=lambda x: x[1], 
+                           reverse=True
+                    )
+                ]
+
+                # If sources don't enter the threshold then we check if the slopoe 
+                # between the first two is steep enough to return the first one.
+                if not filtered_results:
+                    seen = set()
+                    unique_results = []
+                    
+                    for doc in results_with_scores:
+                        doc_source = doc.metadata.get("source", "Unknown Source")
+                        score = doc.metadata.get("score", 0)
+                        if doc_source not in seen:
+                            seen.add(doc_source)
+                            unique_results.append((doc, score))
+                    sorted_results = sorted(unique_results, key=lambda x: x[1], reverse=True)
+
+                    # if len(sorted_results) > 1 and (sorted_results[0][1] - sorted_results[1][1]) >= 0.025:
+                    if len(sorted_results) > 1 and (sorted_results[0][1] - sorted_results[1][1]) >= 0.1:
+                        filtered_results = [sorted_results[0][0]]
+                
+                # Out of scope questions
+                if len(filtered_results) == 0:
+                    oos_message = random.choice(OOS_MESSAGE)
                     for word in oos_message.split(' '):
-                        time.sleep(0.1)
+                        time.sleep(0.08)
                         yield f"{word} "
                     return
                 
@@ -345,42 +381,15 @@ def prompt_route():
                     answer += token
                     yield token
                         
-                logging.info('\n \n')
-                logging.info('\n \n')
+                logging.info("""
+                             
+                             """)
                 
-                
-                
-                # if len(filtered_results) == 0:
-                #     filtered_results = sorted(
-                #         [(doc, score) for doc, score in results_with_scores if score >= MID_THRESHOLD],
-                #         key=lambda x: x[1], 
-                #         reverse=True
-                #     )
-
-                retriever_results = [doc for doc in filtered_results]
-
-                # If sources don't enter the threshold then we check if the slopoe 
-                # between the first two is steep enough to return the first one.
-                if not filtered_results:
-                    seen = set()
-                    unique_results = []
-                    
-                    for doc in results_with_scores:
-                        doc_source = doc.metadata.get("source", "Unknown Source")
-                        score = doc.metadata.get("score", 0)
-                        if doc_source not in seen:
-                            seen.add(doc_source)
-                            unique_results.append((doc, score))
-                    sorted_results = sorted(unique_results, key=lambda x: x[1], reverse=True)
-
-                    # if len(sorted_results) > 1 and (sorted_results[0][1] - sorted_results[1][1]) >= 0.025:
-                    if len(sorted_results) > 1 and (sorted_results[0][1] - sorted_results[1][1]) >= 0.1:
-                        retriever_results = [sorted_results[0][0]]
 
                 sources = []
                 sources_returned = 'no'
                 unique_sources = set()
-                for doc in retriever_results:
+                for doc in filtered_results:
                     source = doc.metadata.get("source", "Unknown Source")
                     if source not in unique_sources and not "AUX_DOCS" in source:
                         unique_sources.add(source)

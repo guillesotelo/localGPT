@@ -64,7 +64,8 @@ def get_uncommon_or_identifier_words(query: str) -> List[str]:
     for w in words:
         lw = w.lower()
 
-        looks_like_identifier = bool(re.search(r"[_\-\d]", w)) or any(c.isupper() for c in w)
+        looks_like_identifier = (bool(re.search(r"[_\-\d]", w)) or (w.isupper() and len(w) >= 4))
+
         is_uncommon = lw not in COMMON_WORDS and len(w) > 2
 
         if looks_like_identifier or is_uncommon:
@@ -160,7 +161,7 @@ class HybridRetriever(BaseRetriever):
         ) or results_contain_relevance_words(query, final_docs)
 
         if self.use_bm25 and (add_bm25 or special_words):
-            bm25_query = " ".join(quote_fts_token(w) for w in special_words)
+            bm25_query = " AND ".join(quote_fts_token(w) for w in special_words)
             bm25_docs = search_fts(bm25_query, self.k_bm25, db_path=self.db_path)
 
             if bm25_docs:

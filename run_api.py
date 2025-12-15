@@ -313,7 +313,7 @@ def prompt_route():
                 for doc in results_with_scores:
                     logging.info(f"Document: {doc.metadata.get('source', 'Unknown Source')} | Score: {doc.metadata.get('score', 0)}")
 
-                HIGH_THRESHOLD = 0.71
+                HIGH_THRESHOLD = 0.7
                 MID_THRESHOLD = 0.61
 
                 filtered_results = [
@@ -329,7 +329,7 @@ def prompt_route():
                     filtered_results = [
                         doc for doc, score in sorted(
                            [(doc, doc.metadata.get('score', 0)) for doc in results_with_scores
-                           if doc.metadata.get('score', 0) >= HIGH_THRESHOLD],
+                           if doc.metadata.get('score', 0) >= MID_THRESHOLD],
                            key=lambda x: x[1], 
                            reverse=True
                     )

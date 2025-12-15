@@ -120,17 +120,18 @@ for category in CATEGORY_MAP.keys():
         collection_metadata=COLLECTION_METADATA
     )
 
-    RETRIEVER_MAP[category]['semantic_retriever']  = RETRIEVER_MAP[category]['DB'].as_retriever(
+    RETRIEVER_MAP[category]['semantic_retriever'] = RETRIEVER_MAP[category]['DB'].as_retriever(
         search_type="similarity",
         similarity_metric="cosine",
         search_kwargs={"k": SEMANTIC_K_DOCS}
     )
 
-    RETRIEVER_MAP[category]['hybrid_retriever']  = HybridRetriever(
+    RETRIEVER_MAP[category]['hybrid_retriever'] = HybridRetriever(
         semantic_retriever=RETRIEVER_MAP[category]['semantic_retriever'],
         k_bm25=FULLTEXT_K_DOCS,
         k_semantic=SEMANTIC_K_DOCS,
         db_path=f"{category}.db",
+        use_scores=True
     )
 
 
@@ -299,8 +300,32 @@ def prompt_route():
                     )
                     
 
-                # Build stream chain
                 retriever = RETRIEVER_MAP[from_source or 'HPx']['hybrid_retriever']
+                    
+                # ----- Source extraction -----
+                results_with_scores = retriever.get_relevant_documents(user_prompt)
+
+                for doc in results_with_scores:
+                    logging.info(f"Document: {doc.metadata.get('source', 'Unknown Source')} | Score: {doc.metadata.get('score', 0)}")
+
+                HIGH_THRESHOLD = 0.71
+                MID_THRESHOLD = 0.61
+
+                filtered_results = sorted(
+                    [(doc, doc.metadata.get('score', 0)) for doc in results_with_scores if doc.metadata.get('score', 0) >= HIGH_THRESHOLD],
+                    key=lambda x: x[1], 
+                    reverse=True
+                )
+                
+                # Testing OOS questions (high threshold)
+                if len(filtered_results) == 0:
+                    oos_message = "This question is outside the scope of our documentation."
+                    for word in oos_message.split(' '):
+                        time.sleep(0.1)
+                        yield f"{word} "
+                    return
+                
+                # Build stream chain
                 question_answer_chain = create_stuff_documents_chain(LLM, prompt)
                 rag_chain = create_retrieval_chain(retriever, question_answer_chain)
 
@@ -322,31 +347,17 @@ def prompt_route():
                         
                 logging.info('\n \n')
                 logging.info('\n \n')
-                    
-                # ----- Source generation -----
-                source_retriever = RETRIEVER_MAP[from_source or 'HPx']['semantic_retriever']
-                retriever_results_with_scores = source_retriever.vectorstore.similarity_search_with_relevance_scores(answer, k=SEMANTIC_K_DOCS)
-
-                for doc, score in retriever_results_with_scores:
-                    logging.info(f"Document: {doc.metadata.get('source', 'Unknown Source')} | Score: {score}")
-
-                HIGH_THRESHOLD = 0.71
-                MID_THRESHOLD = 0.61
-
-                filtered_results = sorted(
-                    [(doc, score) for doc, score in retriever_results_with_scores if score >= HIGH_THRESHOLD],
-                    key=lambda x: x[1], 
-                    reverse=True
-                )
                 
-                if len(filtered_results) == 0:
-                    filtered_results = sorted(
-                        [(doc, score) for doc, score in retriever_results_with_scores if score >= MID_THRESHOLD],
-                        key=lambda x: x[1], 
-                        reverse=True
-                    )
+                
+                
+                # if len(filtered_results) == 0:
+                #     filtered_results = sorted(
+                #         [(doc, score) for doc, score in results_with_scores if score >= MID_THRESHOLD],
+                #         key=lambda x: x[1], 
+                #         reverse=True
+                #     )
 
-                retriever_results = [doc for doc, score in filtered_results]
+                retriever_results = [doc for doc in filtered_results]
 
                 # If sources don't enter the threshold then we check if the slopoe 
                 # between the first two is steep enough to return the first one.
@@ -354,8 +365,9 @@ def prompt_route():
                     seen = set()
                     unique_results = []
                     
-                    for doc, score in retriever_results_with_scores:
+                    for doc in results_with_scores:
                         doc_source = doc.metadata.get("source", "Unknown Source")
+                        score = doc.metadata.get("score", 0)
                         if doc_source not in seen:
                             seen.add(doc_source)
                             unique_results.append((doc, score))
@@ -426,9 +438,10 @@ def prompt_route():
             response.headers["error"] = error
             
             error_user_message = random.choice(TECH_ISSUE_LLM)
+            ERROR_DOWN_URL = os.getenv('ERROR_DOWN_URL', 'nourl')
             error_message = f"""\n{error_user_message}
             \nPlease try again or start a new chat.
-            \nVisit [Down@Volvo](https://down.volvocars.net?system=veronica) for more info."""
+            \nVisit [Down@Volvo]({ERROR_DOWN_URL}) for more info."""
             
             yield '\n'
             for word in error_message.split(' '):
@@ -551,23 +564,23 @@ def prompt_route_test():
                     
                 # ----- Source generation -----
                 source_retriever = RETRIEVER_MAP[from_source or 'HPx']['semantic_retriever']
-                retriever_results_with_scores = source_retriever.vectorstore.similarity_search_with_relevance_scores(answer, k=SEMANTIC_K_DOCS)
+                results_with_scores = source_retriever.vectorstore.similarity_search_with_relevance_scores(answer, k=SEMANTIC_K_DOCS)
 
-                for doc, score in retriever_results_with_scores:
+                for doc, score in results_with_scores:
                     logging.info(f"Document: {doc.metadata.get('source', 'Unknown Source')} | Score: {score}")
 
                 HIGH_THRESHOLD = 0.71
                 MID_THRESHOLD = 0.61
 
                 filtered_results = sorted(
-                    [(doc, score) for doc, score in retriever_results_with_scores if score >= HIGH_THRESHOLD],
+                    [(doc, score) for doc, score in results_with_scores if score >= HIGH_THRESHOLD],
                     key=lambda x: x[1], 
                     reverse=True
                 )
                 
                 if len(filtered_results) == 0:
                     filtered_results = sorted(
-                        [(doc, score) for doc, score in retriever_results_with_scores if score >= MID_THRESHOLD],
+                        [(doc, score) for doc, score in results_with_scores if score >= MID_THRESHOLD],
                         key=lambda x: x[1], 
                         reverse=True
                     )
@@ -580,7 +593,7 @@ def prompt_route_test():
                     seen = set()
                     unique_results = []
                     
-                    for doc, score in retriever_results_with_scores:
+                    for doc, score in results_with_scores:
                         doc_source = doc.metadata.get("source", "Unknown Source")
                         if doc_source not in seen:
                             seen.add(doc_source)
@@ -879,6 +892,7 @@ def search_vectors():
         full_text = data['fulltext']
         k = int(data['k']) if data['k'] else 0
         source = data['source']
+        logging.info(f"******** source: {source}")
 
         if not query:
             return jsonify({"error": "Query parameter is required"}), 400

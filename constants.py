@@ -101,7 +101,6 @@ OOS_MESSAGE = [
   "This topic is outside the scope of the documentation currently available to us.",
   "At this time, our documentation does not cover this particular question.",
   "We're afraid this question is not within the scope of our documented materials.",
-  "This inquiry goes beyond what is covered in our existing documentation.",
   "Our documentation does not currently include information related to this question.",
   "We're sorry, but this question is outside the scope of the resources we have documented."
 ]

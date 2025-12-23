@@ -176,6 +176,12 @@ def require_admin_token(func):
 
 DB_FILE = "/chatbot/db/chatbot.db"
 
+def add_column_if_not_exists(cursor, table, column, col_type):
+    cursor.execute(f"PRAGMA table_info({table})")
+    columns = [row[1] for row in cursor.fetchall()]
+    if column not in columns:
+        cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
+
 def init_db():
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
@@ -205,10 +211,23 @@ def init_db():
             )
         """)
 
+        add_column_if_not_exists(cursor, "analytics", "app_version", "TEXT")
+        
         # Ensure UNIQUE index exists (safe for existing DBs)
         cursor.execute("""
             CREATE UNIQUE INDEX IF NOT EXISTS idx_analytics_session_id
             ON analytics(session_id)
+        """)
+        
+         # DLT Analyzer table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS dlt_analyzer (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                metadata TEXT,
+                dlt_data TEXT,
+                action TEXT
+            )
         """)
         
         conn.commit()
@@ -355,9 +374,10 @@ def prompt_route():
                 
                 # Out of scope questions
                 if len(filtered_results) == 0:
-                    oos_message = random.choice(OOS_MESSAGE)
+                    about_knowledge = os.getenv('ABOUT_KNOWLEDGE', 'nourl')
+                    oos_message = random.choice(OOS_MESSAGE) + f"\nTo understand more about my knowledgement, take a look at [this page]({about_knowledge})."
                     for word in oos_message.split(' '):
-                        time.sleep(0.08)
+                        time.sleep(0.06)
                         yield f"{word} "
                     return
                 
@@ -941,6 +961,7 @@ def save_analytics():
 
         # Set default values for optional fields
         token_count = data.get("token_count", 0)
+        app_version = data.get("app_version", 'unknown')
 
         with sqlite3.connect(DB_FILE) as conn:
             cursor = conn.cursor()
@@ -951,21 +972,24 @@ def save_analytics():
                     token_count, 
                     duration_seconds,
                     prompt,
-                    messages
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                    messages,
+                    app_version
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(session_id) DO UPDATE SET
                 message_count = excluded.message_count,
                 token_count = excluded.token_count,
                 duration_seconds = excluded.duration_seconds,
                 prompt = excluded.prompt,
                 messages = excluded.messages
+                app_version = excluded.app_version
             """, (
                 data["session_id"],
                 data["message_count"],
                 token_count,
                 data["duration_seconds"],
                 data["prompt"],
-                json.dumps(data["messages"])
+                json.dumps(data["messages"]),
+                app_version
             ))
             conn.commit()
 
@@ -1101,6 +1125,19 @@ def upload_file():
     logging.info(f"Done uploading: {file.filename}")
     
     delete_file_later(file_path, delay_seconds=3600)
+    
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO dlt_analyzer (
+                dlt_data, 
+                action
+            ) VALUES (?, ?)
+        """, (
+            json.dumps({ 'file_id': file_id, 'filename': file.filename, 'ext': ext }),
+            'upload'
+        ))
+        conn.commit()
 
     return jsonify({"file_id": file_id}), 200
 
@@ -1138,6 +1175,25 @@ def analyze_file(file_id):
         
         # Remove after 1 hour
         delete_file_later(json_path, delay_seconds=3600)
+        
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO dlt_analyzer (
+                    dlt_data, 
+                    action
+                ) VALUES (?, ?)
+            """, (
+                json.dumps({ 
+                            'file_id': file_id, 
+                            'filename': matching_files[0], 
+                            'file_path': file_path, 
+                            'json_path': json_path, 
+                            'log_count': len(processed_json) 
+                        }),
+                'analysis'
+            ))
+            conn.commit()
 
         return jsonify(processed_json), 200
 
@@ -1183,6 +1239,25 @@ def mask_dlt_file(file_id):
         )
 
         logging.info(f"Done generating masked DLT.")
+        
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO dlt_analyzer (
+                    dlt_data, 
+                    action
+                ) VALUES (?, ?)
+            """, (
+                json.dumps({ 
+                            'file_id': file_id, 
+                            'filename': json_files[0], 
+                            'json_path': json_path, 
+                            'flagged': len(flagged_timestamps) 
+                        }),
+                'mask'
+            ))
+            conn.commit()
+            
         # Return masked DLT
         return send_file(
             io.BytesIO(output_buffer.getvalue()),
@@ -1196,6 +1271,20 @@ def mask_dlt_file(file_id):
         return jsonify({"error": "Failed to mask file"}), 500
 
 
+@app.route("/api/get_dlt_analytics", methods=["GET"])
+def get_dlt_analytics():
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+
+            cursor.execute("SELECT * FROM dlt_analyzer")  # Fetch all columns
+            analytic_list = [dict(row) for row in cursor.fetchall()]  # Convert rows to dicts
+
+        return jsonify(analytic_list), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    
 
 #  ---------- END OF API ROUTES ----------
 

@@ -38,7 +38,25 @@ REGEX_PATTERNS = {
         \d{3}[\s-]\d{4}            # main number
         (?!\d)                      # not followed by digit
         """, re.VERBOSE),
-    "GPS_COORDINATES": re.compile(r"\b([-+]?\d{1,2}\.\d+),\s*([-+]?\d{1,3}\.\d+)\b"),
+    "GPS_COORDINATES": re.compile(
+        r"""
+        (?:
+            # Explicit latitude + longitude fields (any order, same line)
+            (?:
+                (?<![a-zA-Z])
+                (?:lat|latitude)\s*[:=]\s*([-+]?\d{1,2}\.\d{4,})
+                .*?
+                (?:lon|longitude)\s*[:=]\s*([-+]?\d{1,3}\.\d{4,})
+            )
+            |
+            # GNSS / automotive structured location payloads
+            (?:
+                \b(setGNSS|GNSSRawLocation|gnss_ts|rawLocationData)\b
+            )
+        )
+        """,
+        re.IGNORECASE | re.VERBOSE
+    ),
     "CREDIT_CARD": re.compile( r"""
         (?:  
             (?<![A-Fa-f0-9])
@@ -167,9 +185,16 @@ def is_sensitive_combo(entity_type, text):
         if any(crim in t for crim in CRIMINAL_INDICATORS):
             return True
 
-    # Precise GPS (< 500m accuracy)
+    # GPS & GNNS
     if entity_type not in ['GPS_COORDINATES']:
-        if re.search(r"(?<![a-zA-Z])(lat|lon|latitude|longitude)(?![a-zA-Z])\s*[:=]?\s*-?\d{1,3}\.\d{4,7}", t):
+        if re.search(
+                r"\b("
+                r"lat|lon|latitude|longitude|"
+                r"gnss|setgnss|gnss_ts|rawlocation|gps"
+                r")\b",
+                t,
+                re.IGNORECASE
+            ):
             return True
 
     # --- SPEED COMBO ---
@@ -232,7 +257,17 @@ def scan_entry(entry, prev_findings=None):
                 continue
             if entity == "CREDIT_CARD" and not luhn_check(match.group()):
                 continue
-            
+            if entity == "GPS_COORDINATES":
+                # If regex captured latitude/longitude, validate them
+                if match.lastindex and match.lastindex >= 2:
+                    try:
+                        lat = float(match.group(1))
+                        lon = float(match.group(2))
+                        if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
+                            continue
+                    except Exception:
+                        continue
+
             flagged.append({
                 "entity_type": entity,
                 "start": match.start(),

@@ -34,15 +34,15 @@ MAX_NEW_TOKENS = int(os.getenv("MAX_NEW_TOKENS", 1024)) # 2048 with window 4096
 TEMPERATURE=float(os.getenv("TEMPERATURE", 0.1))
 R_PENALTY=float(os.getenv("R_PENALTY", 1.1))
 N_GPU_LAYERS = int(os.getenv("N_GPU_LAYERS", -1)) # This should be 0 for CPU use
-N_BATCH = int(os.getenv("N_BATCH", 16))
+N_BATCH = int(os.getenv("N_BATCH", 64)) # 16 - qwen update (affects prefill speed / embedding the prompt)
 TOP_P = float(os.getenv("TOP_P", 0.9))
 TOP_K = int(os.getenv("TOP_K", 20))
 
 # EMBEDDINGS
 SPLIT_SEPARATORS = ["\n\n", "\n", ". ", " ", ""]
-CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", 2048)) # 1280
-CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", 512)) # 320
-FETCH_K_DOCS = int(os.getenv("FETCH_K_DOCS", 20)) # 50
+CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", 1024)) # 2048 - qwen update
+CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", 256)) # 512 - qwen update
+FETCH_K_DOCS = int(os.getenv("FETCH_K_DOCS", 10)) # 20 - qwen update 50
 LAMBDA_MULT = float(os.getenv("LAMBDA_MULT", 0.25))
 SEMANTIC_K_DOCS = int(os.getenv("SEMANTIC_K_DOCS", 6)) # 7
 FULLTEXT_K_DOCS = int(os.getenv("FULLTEXT_K_DOCS", 2))
@@ -129,8 +129,11 @@ DOCUMENT_MAP = {
 # MODEL_BASENAME =  os.getenv("MODEL_BASENAME", "Mistral-7B-Instruct-v0.3-Q5_K_M.gguf")
 
 MODEL_NAME='qwen'
+# MODEL_ID = os.getenv("MODEL_ID", "Qwen/Qwen3-8B-GGUF")
+# MODEL_BASENAME = "Qwen3-8B-Q5_K_M.gguf"
 MODEL_ID = os.getenv("MODEL_ID", "Qwen/Qwen2.5-7B-Instruct-GGUF")
 MODEL_BASENAME = "/chatbot/source/api/models/models--Qwen--Qwen2.5-7B-Instruct-GGUF/qwen2.5-7b-instruct-q5_k_m.gguf"
+
 # Using this script to download both files that will be merge on model execution by HuggingFace CLI:
 # huggingface-cli download Qwen/Qwen2.5-7B-Instruct-GGUF \
 #     --include "qwen2.5-7b-instruct-q5_k_m*.gguf" \

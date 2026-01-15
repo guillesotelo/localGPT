@@ -980,7 +980,7 @@ def save_analytics():
                 token_count = excluded.token_count,
                 duration_seconds = excluded.duration_seconds,
                 prompt = excluded.prompt,
-                messages = excluded.messages
+                messages = excluded.messages,
                 app_version = excluded.app_version
             """, (
                 data["session_id"],

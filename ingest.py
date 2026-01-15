@@ -11,6 +11,7 @@ import torch
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import Chroma
 from chromadb import PersistentClient
+from collections import defaultdict
 
 import nltk
 from utils import get_embeddings
@@ -157,13 +158,18 @@ def load_documents_from_directory(directory, category_name, documents):
                 file_log(f"[{category_name}] {source_file_path} loaded.")
                 loader_class = DOCUMENT_MAP.get(ext if ext in DOCUMENT_MAP else '.txt')
                 document = loader_class(source_file_path).load()[0]
+                
+                url = file_name
 
                 # Metadata URL mapping
                 if '§' in file_name:
                     spliturl = file_name[4:].replace('¤', '/').split('§')
                     url_ext = '.md' if ext == '.md' else '.html'
                     url = f"[{spliturl[0]}]({SERVER_URL}{spliturl[1].replace(ext, url_ext)})"
-                    document.metadata["source"] = url
+                    
+                document.metadata["source"] = url
+                document.metadata["doc_title"] = url
+                document.metadata["doc_id"] = url
 
                 if len(document.page_content) > 50:
                     documents.append(document)
@@ -200,6 +206,12 @@ def ingest_environment(env_name, source_directory, persist_directory, embeddings
         chunk_overlap=CHUNK_OVERLAP
     )
     texts = text_splitter.split_documents(documents)
+    
+    chunk_counters = defaultdict(int)
+    for doc in texts:
+        doc_id = doc.metadata.get("doc_id", "unknown")
+        chunk_counters[doc_id] += 1
+        doc.metadata["chunk_seq"] = chunk_counters[doc_id]
 
     # FTS DB
     create_fts_table(db_path=f"{env_name}.db")

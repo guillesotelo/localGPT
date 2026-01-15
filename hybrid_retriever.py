@@ -11,6 +11,28 @@ from langchain_core.callbacks import CallbackManagerForRetrieverRun
 from constants import COMMON_WORDS
 
 
+def group_and_order_by_document(docs: List[Document]) -> List[Document]:
+    grouped = defaultdict(list)
+
+    for doc in docs:
+        doc_id = doc.metadata.get("doc_id")
+        if doc_id:
+            grouped[doc_id].append(doc)
+        else:
+            grouped[None].append(doc)
+
+    ordered = []
+
+    for doc_id, chunks in grouped.items():
+        if doc_id is None:
+            ordered.extend(chunks)
+        else:
+            chunks.sort(key=lambda d: d.metadata.get("chunk_seq", 0))
+            ordered.extend(chunks)
+
+    return ordered
+
+
 def search_fts(query, k, db_path):
     """Full text search"""
     try:
@@ -181,10 +203,13 @@ class HybridRetriever(BaseRetriever):
                         seen.add(doc.page_content)
                 final_docs = merged
 
+        # Enforce document continuity
+        final_docs = group_and_order_by_document(final_docs)
+
+        # hard cap after ordering
         if self.k_final:
             final_docs = final_docs[: self.k_final]
 
-            
         return final_docs
 
 

@@ -103,7 +103,10 @@ def create_fts_table(db_path="fts_index.db"):
             page_content,          -- searchable text
             source UNINDEXED,      -- metadata: file or doc name
             chunk_id UNINDEXED,    -- metadata: chunk index
-            metadata_json UNINDEXED
+            metadata_json UNINDEXED,
+            chunk_seq UNINDEXED,
+            doc_id UNINDEXED,
+            doc_title UNINDEXED
         );
     """)
     conn.commit()
@@ -117,13 +120,16 @@ def insert_documents_for_fts(docs, db_path="fts_index.db"):
     for doc in docs:
         meta = doc.metadata or {}
         cur.execute("""
-            INSERT INTO docs (page_content, source, chunk_id, metadata_json)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO docs (page_content, source, chunk_id, metadata_json, chunk_seq, doc_id, doc_title)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         """, (
             doc.page_content,
             meta.get("source", ""),
             meta.get("chunk_id", ""),
             json.dumps(meta),
+            meta.get("chunk_seq", ""),
+            meta.get("doc_id", ""),
+            meta.get("doc_title", "")
         ))
 
     conn.commit()

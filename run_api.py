@@ -334,6 +334,7 @@ def prompt_route():
 
                 HIGH_THRESHOLD = 0.7
                 MID_THRESHOLD = 0.61
+                SLOPE_THRESHOLD = 0.1
 
                 filtered_results = [
                     doc for doc, score in sorted(
@@ -369,7 +370,7 @@ def prompt_route():
                     sorted_results = sorted(unique_results, key=lambda x: x[1], reverse=True)
 
                     # if len(sorted_results) > 1 and (sorted_results[0][1] - sorted_results[1][1]) >= 0.025:
-                    if len(sorted_results) > 1 and (sorted_results[0][1] - sorted_results[1][1]) >= 0.1:
+                    if len(sorted_results) > 1 and (sorted_results[0][1] - sorted_results[1][1]) >= SLOPE_THRESHOLD:
                         filtered_results = [sorted_results[0][0]]
                 
                 # Out of scope questions

@@ -86,8 +86,11 @@ def get_uncommon_or_identifier_words(query: str) -> List[str]:
     for w in words:
         lw = w.lower()
 
-        looks_like_identifier = (bool(re.search(r"[_\-\d]", w)) or (w.isupper() and len(w) >= 4))
-
+        looks_like_identifier = (
+            bool(re.search(r"[_\-\d]", w))
+            or (w.isupper() and len(w) >= 2)
+        )
+        
         is_uncommon = lw not in COMMON_WORDS and len(w) > 2
 
         if looks_like_identifier or is_uncommon:
@@ -147,12 +150,12 @@ class HybridRetriever(BaseRetriever):
                         query, k=self.k_semantic
                     )
             else:
-                docs = self.semantic_retriever.get_relevant_documents(query)[: self.k_semantic]
+                docs = self.semantic_retriever.invoke(query)[: self.k_semantic]
                 raw = [(doc, None) for doc in docs]
             results = raw
         except Exception as e:
             logging.warning(f"Falling back to raw semantic retrieval: {e}")
-            docs = self.semantic_retriever.get_relevant_documents(query)
+            docs = self.semantic_retriever.invoke(query)
             results = [(doc, None) for doc in docs]
 
         # Attach score to metadata (LangChain MultiVectorRetriever style)

@@ -117,14 +117,9 @@ Install cuda-drivers (not sure if needed):
 Add CUDA paths:
 
 ```bash
-   sudo nano /home/local/VCCNET/<username>/.bashrc # Or /home/<username>/.bashrc
-```
-
-Add the following paths at the end (match the used CUDA version, 12.5 in this example):
-
-```bash
-export PATH="/usr/local/cuda-12.5/bin:$PATH"
-export LD_LIBRARY_PATH="/usr/local/cuda-12.5/lib64:$LD_LIBRARY_PATH"
+   export CUDA_HOME=/usr/local/cuda
+   export PATH=$CUDA_HOME/bin:$PATH
+   export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
 ```
 
 Then opening new bash window or after running `bash`:

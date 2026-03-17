@@ -1,0 +1,37 @@
+# This aims to be the fresh start for chatbot conda environment
+# Run this install (pip install -r chatbot_requirements.txt) plus the CUDA llama-cpp command:
+# CMAKE_ARGS="-DGGML_CUDA=on -DLLAVA_BUILD=off" pip install -U llama-cpp-python --force-reinstall --no-cache-dir
+
+# --- Core Framework & API ---
+Flask==3.0.3
+Flask-Cors==5.0.0
+python-dotenv==1.0.1
+redis==5.2.1
+psutil==6.1.0
+werkzeug==3.1.3
+click==8.1.7
+
+# --- LLM & LangChain Ecosystem ---
+langchain==0.3.9
+langchain-community==0.3.9
+langchain-core==0.3.37
+langchain-text-splitters==0.3.2
+pydantic==2.10.3
+
+# --- AI Models & Weights ---
+torch==2.3.1
+torchvision==0.18.1
+transformers==4.46.2
+huggingface-hub==0.29.1
+bitsandbytes==0.44.1
+auto-gptq==0.6.0
+sentence-transformers==2.5.1
+InstructorEmbedding==1.0.1
+
+# --- Vector Database & Data Loading ---
+chromadb==0.5.21
+nltk==3.9.1
+pypdf==5.1.0
+pdfminer.six==20221105
+docx2txt==0.8
+unstructured==0.11.2

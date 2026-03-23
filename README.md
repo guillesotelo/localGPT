@@ -30,14 +30,14 @@ Test typing `conda`. You might need to verify you are in bash with `bash` comman
 - Create python environment using verion 3.10
 
 ```bash
-conda create -n veronica python=3.10.0
-conda activate veronica
+conda create -n chatbot python=3.10.0
+conda activate chatbot
 ```
 
 ### Requirements
 
 ```shell
-pip install -r requirements.txt
+sudo /opt/anaconda3/envs/chatbot/bin/python -m pip install -r cpu_requirements.txt
 ```
 
 If problems arise with llamaCpp run:
@@ -157,7 +157,7 @@ Install Conda and setup Python environment first, [following these instructions]
 #### PIP
 
 ```shell
-pip install -r requirements.txt
+sudo /opt/anaconda3/envs/chatbot/bin/python -m pip install -r gpu_requirements.txt
 ```
 
 - Install LlamaCPP
@@ -166,6 +166,10 @@ For `NVIDIA` GPUs support, use `cuBLAS`
 
 ```shell
    CMAKE_ARGS="-DGGML_CUDA=on -DLLAVA_BUILD=off" pip install -U llama-cpp-python --force-reinstall --no-cache-dir
+
+   # Passing conda env and forcing user-agnostic install
+   sudo env "PATH=$PATH" CMAKE_ARGS="-DGGML_CUDA=on -DLLAVA_BUILD=off" \
+/opt/anaconda3/envs/chatbot/bin/python -m pip install llama-cpp-python "numpy<2" --force-reinstall --no-cache-dir
 ```
 
 #### Fix Broken Dependencies
@@ -173,7 +177,7 @@ For `NVIDIA` GPUs support, use `cuBLAS`
 Run:
 
 ```bash
-   pip install -r requirements.txt --force-reinstall
+   sudo /opt/anaconda3/envs/chatbot/bin/python -m pip install -r gpu_requirements.txt --force-reinstall
 ```
 
 If still dependency errors arise, try:
@@ -196,7 +200,7 @@ Finally check: `pip check` to confirm dependencies ar ok.
 After all is working, freeze requirements so we make sure we save our operative state:
 
 ```bash
-   pip freeze > requirements.txt
+   pip freeze > working_requirements.txt
 ```
 
 ## Run API
@@ -204,7 +208,7 @@ After all is working, freeze requirements so we make sure we save our operative 
 To run the API, make sure you are on your python environment first, then run the main script like this:
 
 ```bash
-   conda activate veronica
+   conda activate chatbot
    python run_api.py
 ```
 
@@ -306,7 +310,7 @@ npm run build
 This will display a message on the frontend about a build taking place, and reload the in around 20 seconds (build ussually takes 15s).
 
 
-### Apache (Veronica's Specific)
+### Apache (Chatbot's Specific)
 
 The chatbot frontend is served via Node and Apache service.
 
@@ -397,10 +401,10 @@ Description=Gunicorn instance to serve your API
 After=network.target
 
 [Service]
-User=gsotelo
-Group=domain^users
+User=root
+# Group=getent group | grep -i "domain"
 WorkingDirectory=/chatbot/source/api
-ExecStart=/home/local/VCCNET/gsotelo/anaconda3/envs/localGPT/bin/gunicorn --bind 0.0.0.0:5000 run_api:app --workers 1 --threads 1 --timeout 300
+ExecStart=/opt/anaconda3/envs/chatbot/bin/gunicorn --bind 0.0.0.0:5000 run_api:app --workers 1 --threads 1 --timeout 300
 Restart=always
 StandardOutput=journal
 StandardError=journal
@@ -457,7 +461,7 @@ else
 fi
 
 # Run the ingestion script
-/home/local/VCCNET/gsotelo/anaconda3/envs/localGPT/bin/python ingest.py
+/opt/anaconda3/envs/chatbot/bin/python ingest.py
 
 # Start the Gunicorn service
 systemctl start gunicorn.service

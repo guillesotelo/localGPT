@@ -15,7 +15,7 @@ else
 fi
 
 # Run the ingestion script
-/home/local/VCCNET/gsotelo/anaconda3/envs/localGPT/bin/python ingest.py
+/opt/anaconda3/envs/chatbot/bin/python ingest.py
 
 # Change user permissions on DB
 chmod -R 777 /chatbot/source/api/DB

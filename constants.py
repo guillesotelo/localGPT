@@ -61,6 +61,7 @@ CATEGORY_MAP = {
     "SIMULINK": ["simulink"],
     "SPA3": ["spa3"],
     "SAFETYMANUAL": ["safety manual", "safetymanual"],
+    "ELARCH": ["elarch"],
 }
 
 SNOK_SYSTEM_PROMPT =  """

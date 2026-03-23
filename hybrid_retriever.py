@@ -5,6 +5,7 @@ import re
 import logging
 import sqlite3
 import json
+import math
 
 from langchain.schema import BaseRetriever, Document
 from langchain_core.callbacks import CallbackManagerForRetrieverRun
@@ -33,6 +34,15 @@ def group_and_order_by_document(docs: List[Document]) -> List[Document]:
     return ordered
 
 
+def softmax_normalize(scores: list[float]) -> list[float]:
+    """Normalize using softmax — preserves relative magnitude, avoids 0.0 floor."""
+    if not scores:
+        return []
+    max_s = max(scores)
+    exps = [math.exp(s - max_s) for s in scores]  # shift for numerical stability
+    total = sum(exps)
+    return [e / total for e in exps]
+
 def search_fts(query, k, db_path):
     """Full text search"""
     try:
@@ -50,32 +60,26 @@ def search_fts(query, k, db_path):
 
         rows = cur.fetchall()
         conn.close()
-        
+
         if not rows:
             return []
 
-        docs = []
-        
-        # Normalize BM25 scores to 0–1 (higher = better)
-        scores = [row["score"] for row in rows]
-        min_s, max_s = min(scores), max(scores)
-        if max_s == min_s:
-            norm_scores = [1.0 for _ in scores]
-        else:
-            norm_scores = [(max_s - s) / (max_s - min_s) for s in scores]
+        # SQLite BM25 is negative: closer to 0 = better match → flip to positive
+        raw_scores = [-row["score"] for row in rows]  # higher = better
 
+        norm_scores = softmax_normalize(raw_scores)
 
         docs = []
         for row, norm_score in zip(rows, norm_scores):
             meta = json.loads(row["metadata_json"]) if row["metadata_json"] else {}
             meta["bm25_score_raw"] = row["score"]
-            meta["score"] = norm_score  # normalized score
+            meta["score"] = norm_score
             meta.setdefault("source", row["source"])
             meta.setdefault("chunk_id", row["chunk_id"])
             docs.append(Document(page_content=row["page_content"], metadata=meta))
 
         return docs
-    
+
     except:
         return []
 

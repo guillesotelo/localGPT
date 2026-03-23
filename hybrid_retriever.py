@@ -43,6 +43,7 @@ def softmax_normalize(scores: list[float]) -> list[float]:
     total = sum(exps)
     return [e / total for e in exps]
 
+
 def search_fts(query, k, db_path):
     """Full text search"""
     try:

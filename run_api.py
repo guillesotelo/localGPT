@@ -332,8 +332,8 @@ def prompt_route():
                 for doc in results_with_scores:
                     logging.info(f"Document: {doc.metadata.get('source', 'Unknown Source')} | Score: {doc.metadata.get('score', 0)}")
 
-                HIGH_THRESHOLD = 0.7
-                MID_THRESHOLD = 0.61
+                HIGH_THRESHOLD = 0.5
+                MID_THRESHOLD = 0.45
                 SLOPE_THRESHOLD = 0.1
 
                 filtered_results = [
@@ -410,9 +410,17 @@ def prompt_route():
                 sources = []
                 sources_returned = 'no'
                 unique_sources = set()
+                
+                EXCLUDED_SOURCES = [
+                    'AUX_DOCS',
+                    'auxiliary_data',
+                    'guide_to_guidelines',
+                    '/More/Search.html',
+                    'final_words.html',
+                ]
                 for doc in filtered_results:
                     source = doc.metadata.get("source", "Unknown Source")
-                    if source not in unique_sources and not "AUX_DOCS" in source:
+                    if source not in unique_sources and not any(ex in source for ex in EXCLUDED_SOURCES):
                         unique_sources.add(source)
                         sources.append(source)
 
@@ -483,8 +491,7 @@ def prompt_route():
 
     response = Response(generate_stream(), mimetype="text/plain")
     response.headers["Stream-ID"] = stream_id
-    logging.info(f">>> Generated response for stream ID: {stream_id}")
-    logging.info(">>> Exiting /api/prompt_route")
+    logging.info(f">>> Stream ID: {stream_id}")
     return response
 
 

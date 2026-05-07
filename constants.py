@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 ROOT_DIRECTORY = os.path.dirname(os.path.realpath(__file__))
 # SOURCE_DIRECTORY = f"{ROOT_DIRECTORY}/SOURCE_DOCUMENTS"
 SOURCE_DIRECTORY = os.getenv("SOURCE_DIRECTORY", "/var/lib/hpchatbot/latest")
+SOURCE_DIRECTORY_ELARCH =  "/var/lib/hpchatbot/elarch"
 LEGACY_DIRECTORY = "/var/lib/hpchatbot/_archive/hpdevp.1761279507"
 SOURCE_DIRECTORY_SNOK = f"{ROOT_DIRECTORY}/SNOK/DOCS"
 AUX_DOCS = '/chatbot/source/api/AUX_DOCS'
@@ -61,7 +62,7 @@ CATEGORY_MAP = {
     "SIMULINK": ["simulink"],
     "SPA3": ["spa3"],
     "SAFETYMANUAL": ["safety manual", "safetymanual"],
-    "ELARCH": ["elarch"],
+    "ELARCH": [],
 }
 
 SNOK_SYSTEM_PROMPT =  """

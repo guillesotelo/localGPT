@@ -20,6 +20,7 @@ from constants import (
     DOCUMENT_MAP,
     PERSIST_DIRECTORY,
     SOURCE_DIRECTORY,
+    SOURCE_DIRECTORY_ELARCH,
     AUX_DOCS,
     CHUNK_SIZE,
     CHUNK_OVERLAP,
@@ -153,8 +154,8 @@ def load_documents_from_directory(directory, category_name, documents):
             total_textfiles += 1
             file_lower = file_name.lower()
 
-            # Filtering: HPx takes everything
-            if category_name != "HPx":
+            # Filtering: HPx & ELARCH takes all input docs
+            if category_name != "HPx" and category_name != "ELARCH":
                 if not any(key in file_lower for key in filters):
                     continue
 
@@ -268,7 +269,7 @@ def main(device_type):
 
         ingest_environment(
             env_name=category,
-            source_directory=SOURCE_DIRECTORY,
+            source_directory=SOURCE_DIRECTORY_ELARCH if 'ELARCH' in category else SOURCE_DIRECTORY,
             persist_directory=persist_dir,
             embeddings=embeddings,
             device_type=device_type

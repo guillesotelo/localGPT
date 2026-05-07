@@ -49,6 +49,7 @@ from constants import (
     FETCH_K_DOCS,
     LAMBDA_MULT,
     SNOK_SYSTEM_PROMPT,
+    ELARCH_SYSTEM_PROMPT,
     PERSIST_DIRECTORY_SNOK,
     TECH_ISSUE_LLM,
     CATEGORY_MAP,
@@ -311,6 +312,13 @@ def prompt_route():
                 if from_source == 'SNOK':
                     prompt, memory = get_prompt_template(
                         system_prompt=SNOK_SYSTEM_PROMPT,
+                        model_name=MODEL_NAME, 
+                        user_prompt=user_prompt, 
+                        use_context=use_context
+                    )
+                elif 'elarch' in from_source.lower():
+                    prompt, memory = get_prompt_template(
+                        system_prompt=ELARCH_SYSTEM_PROMPT,
                         model_name=MODEL_NAME, 
                         user_prompt=user_prompt, 
                         use_context=use_context

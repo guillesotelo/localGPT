@@ -26,12 +26,12 @@ from langchain.chains.combine_documents import create_stuff_documents_chain
 
 
 from constants import (
-    CHROMA_SETTINGS, 
-    EMBEDDING_MODEL_NAME, 
-    PERSIST_DIRECTORY, 
-    MODEL_ID, 
-    MODEL_BASENAME, 
-    MODEL_NAME, 
+    CHROMA_SETTINGS,
+    EMBEDDING_MODEL_NAME,
+    PERSIST_DIRECTORY,
+    MODEL_ID,
+    MODEL_BASENAME,
+    MODEL_NAME,
     SEMANTIC_K_DOCS,
     FULLTEXT_K_DOCS,
     COLLECTION_METADATA,
@@ -53,7 +53,10 @@ from constants import (
     PERSIST_DIRECTORY_SNOK,
     TECH_ISSUE_LLM,
     CATEGORY_MAP,
-    OOS_MESSAGE
+    OOS_MESSAGE,
+    USE_AZURE_LLM,
+    AZURE_SEMANTIC_K_DOCS,
+    AZURE_FULLTEXT_K_DOCS,
 )
 
 from hybrid_retriever import (
@@ -109,12 +112,17 @@ gc.collect()
 # Load embeddings Model
 EMBEDDINGS = get_embeddings(DEVICE_TYPE)
 
+# LLM backend is controlled by USE_AZURE_LLM in constants.py (or the USE_AZURE_LLM env var)
+EFFECTIVE_SEMANTIC_K = AZURE_SEMANTIC_K_DOCS if USE_AZURE_LLM else SEMANTIC_K_DOCS
+EFFECTIVE_FULLTEXT_K = AZURE_FULLTEXT_K_DOCS if USE_AZURE_LLM else FULLTEXT_K_DOCS
+logging.info(f"Retriever k — semantic: {EFFECTIVE_SEMANTIC_K}, fulltext: {EFFECTIVE_FULLTEXT_K} (azure={USE_AZURE_LLM})")
+
 # Create retrievers
 RETRIEVER_MAP = {}
 for category in CATEGORY_MAP.keys():
     RETRIEVER_MAP[category] = {}
     category_dir = os.path.join(PERSIST_DIRECTORY, category.lower())
-    
+
     RETRIEVER_MAP[category]['DB'] = Chroma(
         persist_directory=category_dir,
         embedding_function=EMBEDDINGS,
@@ -125,21 +133,26 @@ for category in CATEGORY_MAP.keys():
     RETRIEVER_MAP[category]['semantic_retriever'] = RETRIEVER_MAP[category]['DB'].as_retriever(
         search_type="similarity",
         similarity_metric="cosine",
-        search_kwargs={"k": SEMANTIC_K_DOCS}
+        search_kwargs={"k": EFFECTIVE_SEMANTIC_K}
     )
 
     RETRIEVER_MAP[category]['hybrid_retriever'] = HybridRetriever(
         semantic_retriever=RETRIEVER_MAP[category]['semantic_retriever'],
-        k_bm25=FULLTEXT_K_DOCS,
-        k_semantic=SEMANTIC_K_DOCS,
+        k_bm25=EFFECTIVE_FULLTEXT_K,
+        k_semantic=EFFECTIVE_SEMANTIC_K,
         db_path=f"{category}.db",
         use_scores=True
     )
 
 
 # LLM load
-LLM = load_model(device_type=DEVICE_TYPE, model_id=MODEL_ID, model_basename=MODEL_BASENAME)
-logging.info("LLM ready in API.")
+if USE_AZURE_LLM:
+    from azure_llm import load_azure_model
+    LLM = load_azure_model()
+    logging.info("Azure OpenAI LLM ready in API.")
+else:
+    LLM = load_model(device_type=DEVICE_TYPE, model_id=MODEL_ID, model_basename=MODEL_BASENAME)
+    logging.info("Local LLM ready in API.")
 
 
 app = Flask(__name__)
@@ -397,7 +410,7 @@ def prompt_route():
                 chain = rag_chain.pick("answer")
 
                 # Appending the stop callback to existing callbacks (so we don't overwrite the default stream logging)
-                existing_callbacks = getattr(LLM, "callbacks", [])
+                existing_callbacks = getattr(LLM, "callbacks", None) or []
                 stop_handler = StopStreamHandler(stream_id, r_streams)
                 LLM.callbacks = existing_callbacks + [stop_handler]
 
@@ -591,7 +604,7 @@ def prompt_route_test():
                 chain = rag_chain.pick("answer")
 
                 # Appending the stop callback to existing callbacks (so we don't overwrite the default stream logging)
-                existing_callbacks = getattr(LLM, "callbacks", [])
+                existing_callbacks = getattr(LLM, "callbacks", None) or []
                 stop_handler = StopStreamHandler(stream_id, r_streams)
                 LLM.callbacks = existing_callbacks + [stop_handler]
 

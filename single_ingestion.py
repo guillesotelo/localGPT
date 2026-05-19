@@ -29,6 +29,7 @@ from constants import (
 from update_datetime import update_auxiliary_data_file
 
 SERVER_URL = os.getenv('SERVER_URL', '')
+SERVER_URL_ELARCH = os.getenv('SERVER_URL_ELARCH', '')
 
 def create_fts_table(db_path="fts_index.db"):
     # Remove existing DB file
@@ -96,7 +97,8 @@ def load_documents_from_directory(directory, category_name, documents):
                 if '§' in file_name:
                     spliturl = file_name[4:].replace('¤', '/').split('§')
                     url_ext = '.md' if ext == '.md' else '.html'
-                    url = f"[{spliturl[0]}]({SERVER_URL}{spliturl[1].replace(ext, url_ext)})"
+                    server_uri = SERVER_URL_ELARCH if 'ELARCH' in category_name else SERVER_URL
+                    url = f"[{spliturl[0]}]({server_uri}{spliturl[1].replace(ext, url_ext)})"
                     document.metadata["source"] = url
 
                 if len(document.page_content) > 50:

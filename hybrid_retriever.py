@@ -9,7 +9,7 @@ import math
 
 from langchain.schema import BaseRetriever, Document
 from langchain_core.callbacks import CallbackManagerForRetrieverRun
-from constants import COMMON_WORDS
+from constants import COMMON_WORDS, USE_AZURE_LLM, AZURE_K_FINAL
 
 
 def group_and_order_by_document(docs: List[Document]) -> List[Document]:
@@ -184,13 +184,17 @@ class HybridRetriever(BaseRetriever):
         special_words = get_uncommon_or_identifier_words(query)
 
         final_docs = list(semantic_docs)
-        
+
         add_bm25 = any(
             not self.semantic_has_exact_match(semantic_docs, word)
             for word in special_words
         ) or results_contain_relevance_words(query, final_docs)
 
-        if self.use_bm25 and (add_bm25 or special_words):
+        # Azure: always run BM25 for technical identifiers to maximise recall across
+        # large automotive software doc collections; local: only when semantic misses them.
+        run_bm25 = self.use_bm25 and special_words and (USE_AZURE_LLM or add_bm25)
+
+        if run_bm25:
             bm25_query = " AND ".join(quote_fts_token(w) for w in special_words)
             bm25_docs = search_fts(bm25_query, self.k_bm25, db_path=self.db_path)
 
@@ -214,9 +218,10 @@ class HybridRetriever(BaseRetriever):
         # Enforce document continuity
         final_docs = group_and_order_by_document(final_docs)
 
-        # hard cap after ordering
-        if self.k_final:
-            final_docs = final_docs[: self.k_final]
+        # Azure uses a larger cap to fill the 128k context window; local uses k_final.
+        cap = AZURE_K_FINAL if USE_AZURE_LLM else self.k_final
+        if cap:
+            final_docs = final_docs[:cap]
 
         return final_docs
 

@@ -49,6 +49,18 @@ SEMANTIC_K_DOCS = int(os.getenv("SEMANTIC_K_DOCS", 6)) # 7
 FULLTEXT_K_DOCS = int(os.getenv("FULLTEXT_K_DOCS", 2))
 COLLECTION_METADATA = {"hnsw:space": "cosine"}
 
+# LLM backend switch — set True to route all inference through Azure OpenAI
+USE_AZURE_LLM = False
+
+# Azure-optimised ingestion parameters (larger chunks exploit the 128k context window)
+AZURE_CHUNK_SIZE = int(os.getenv("AZURE_CHUNK_SIZE", 2048))
+AZURE_CHUNK_OVERLAP = int(os.getenv("AZURE_CHUNK_OVERLAP", 512))
+
+# Azure-optimised retrieval — scaled to fill the 128k context window
+AZURE_SEMANTIC_K_DOCS = int(os.getenv("AZURE_SEMANTIC_K_DOCS", 18))
+AZURE_FULLTEXT_K_DOCS = int(os.getenv("AZURE_FULLTEXT_K_DOCS", 6))
+AZURE_K_FINAL = int(os.getenv("AZURE_K_FINAL", 20))
+
 CATEGORY_MAP = {
     "HPx": [],  # special: ingests ALL files
     "LEGACY_HPx": ['special legacy DB, no match in filenames'],

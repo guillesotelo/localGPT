@@ -19,6 +19,7 @@ langchain-community==0.3.9
 langchain-core==0.3.37
 langchain-text-splitters==0.3.2
 pydantic==2.10.3
+langchain-openai
 
 # --- AI Models & Weights ---
 torch==2.3.1

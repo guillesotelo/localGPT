@@ -234,6 +234,50 @@ If the error is about MaxRetryError for a certain host like `cdn-lfs-us-1.hf.co`
 os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 ```
 
+### Azure OpenAI Backend (optional)
+
+Instead of running a local model, you can route all LLM calls to an Azure OpenAI deployment (gpt-4.1-mini). This is useful when you need a larger context window (128k tokens) or want to offload inference from the server.
+
+#### 1. Install the extra dependency
+
+```bash
+pip install langchain-openai
+```
+
+#### 2. Set the API key in `.env`
+
+```bash
+AZURE_OPENAI_API_KEY=<your-azure-openai-key>
+```
+
+Never commit this value. The endpoint and deployment name are already configured in [azure_llm.py](azure_llm.py).
+
+#### 3. Flip the switch in `run_api.py`
+
+On line 141, change:
+
+```python
+USE_AZURE_LLM = False
+```
+
+to:
+
+```python
+USE_AZURE_LLM = True
+```
+
+That single change does three things automatically at startup:
+
+| What changes | Local model | Azure model |
+|---|---|---|
+| LLM | Local GGUF via llama-cpp | gpt-4.1-mini (Azure) |
+| Semantic retriever k | `SEMANTIC_K_DOCS` | `SEMANTIC_K_DOCS × 3` |
+| Full-text retriever k | `FULLTEXT_K_DOCS` | `FULLTEXT_K_DOCS × 3` |
+
+The k multiplier (`_K_MULT = 3`) is defined right above the retriever loop in `run_api.py` and can be adjusted there. The Azure model config (endpoint, deployment, max tokens, temperature) lives in [azure_llm.py](azure_llm.py).
+
+---
+
 ### GPT-OSS Setup (optional)
 
 To use GPT-OSS models like gpt-oss-20b from OpenAI, we are going to branch the setup in order to make the LLM work on our CUDA drivers.
@@ -404,7 +448,7 @@ After=network.target
 User=root
 # Group=getent group | grep -i "domain"
 WorkingDirectory=/chatbot/source/api
-ExecStart=/opt/anaconda3/envs/chatbot/bin/gunicorn --bind 0.0.0.0:5000 run_api:app --workers 1 --threads 1 --timeout 300
+ExecStart=/opt/anaconda3/envs/chatbot/bin/gunicorn --bind 0.0.0.0:5000 run_api:app --workers 2 --threads 1 --timeout 300
 Restart=always
 StandardOutput=journal
 StandardError=journal
@@ -517,14 +561,14 @@ sudo systemctl list-timers --all
 Right now we use SFTP protocols for updating code base and everything else on the server.
 A recommended tool is FileZilla for Unix based systems (iOS / Ubuntu) or PuTTY for Windows.
 
-We start a connection with the server's IP, username and password (ussually company's CDSID and password).
+We start a connection with the server's IP, username and password.
 
 ##### SSH
 
 Connection to the server can be done with:
 
 ```bash
-ssh cdsid@10.55.101.133 # Replace the IP with the actual server's IP if needed
+ssh prometheus@10.55.101.133
 ```
 
 If it's the first time connecting to this server, you will be prompted to trust the fingerprint. Respond yes and you will be connected and ready.

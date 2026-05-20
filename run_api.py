@@ -112,6 +112,9 @@ gc.collect()
 # Load embeddings Model
 EMBEDDINGS = get_embeddings(DEVICE_TYPE)
 
+# Azure uses a role-separated ChatPromptTemplate; local models use their own format
+PROMPT_MODEL_NAME = "azure" if USE_AZURE_LLM else MODEL_NAME
+
 # LLM backend is controlled by USE_AZURE_LLM in constants.py (or the USE_AZURE_LLM env var)
 EFFECTIVE_SEMANTIC_K = AZURE_SEMANTIC_K_DOCS if USE_AZURE_LLM else SEMANTIC_K_DOCS
 EFFECTIVE_FULLTEXT_K = AZURE_FULLTEXT_K_DOCS if USE_AZURE_LLM else FULLTEXT_K_DOCS
@@ -268,7 +271,7 @@ def prompt_route():
     stop = request.form.get("stop", "false").lower() == "true"
     error = ''
     
-    if not RETRIEVER_MAP[from_source]:
+    if from_source not in RETRIEVER_MAP or not RETRIEVER_MAP[from_source]:
         print('\n')
         logging.info(f"""
                      
@@ -325,20 +328,20 @@ def prompt_route():
                 if from_source == 'SNOK':
                     prompt, memory = get_prompt_template(
                         system_prompt=SNOK_SYSTEM_PROMPT,
-                        model_name=MODEL_NAME, 
+                        model_name=PROMPT_MODEL_NAME,
                         user_prompt=user_prompt, 
                         use_context=use_context
                     )
                 elif 'elarch' in from_source.lower():
                     prompt, memory = get_prompt_template(
                         system_prompt=ELARCH_SYSTEM_PROMPT,
-                        model_name=MODEL_NAME, 
+                        model_name=PROMPT_MODEL_NAME,
                         user_prompt=user_prompt, 
                         use_context=use_context
                     )
                 else:
                     prompt, memory = get_prompt_template(
-                        model_name=MODEL_NAME, 
+                        model_name=PROMPT_MODEL_NAME,
                         user_prompt=user_prompt, 
                         use_context=use_context
                     )
@@ -471,7 +474,7 @@ def prompt_route():
             else:
                 print(f"\n\n*** Using direct chat with LLM ***\n")
                 prompt, memory = get_prompt_template(
-                    model_name=MODEL_NAME, user_prompt=user_prompt, use_context=use_context
+                    model_name=PROMPT_MODEL_NAME,user_prompt=user_prompt, use_context=use_context
                 )
                 input_data = {"context": None, "question": user_prompt, "history": use_history}
 
@@ -530,7 +533,7 @@ def prompt_route_test():
     stop = request.form.get("stop", "false").lower() == "true"
     error = ''
     
-    if not RETRIEVER_MAP[from_source]:
+    if from_source not in RETRIEVER_MAP or not RETRIEVER_MAP[from_source]:
         print('\n')
         print(f'Category soruce: {from_source} not found. Falling back to HPx')
         print('\n')
@@ -584,13 +587,13 @@ def prompt_route_test():
                 if from_source == 'SNOK':
                     prompt, memory = get_prompt_template(
                         system_prompt=SNOK_SYSTEM_PROMPT,
-                        model_name=MODEL_NAME, 
+                        model_name=PROMPT_MODEL_NAME,
                         user_prompt=user_prompt, 
                         use_context=use_context
                     )
                 else:
                     prompt, memory = get_prompt_template(
-                        model_name=MODEL_NAME, 
+                        model_name=PROMPT_MODEL_NAME,
                         user_prompt=user_prompt, 
                         use_context=use_context
                     )
@@ -689,7 +692,7 @@ def prompt_route_test():
             else:
                 print(f"\n\n*** Using direct chat with LLM ***\n")
                 prompt, memory = get_prompt_template(
-                    model_name=MODEL_NAME, user_prompt=user_prompt, use_context=use_context
+                    model_name=PROMPT_MODEL_NAME,user_prompt=user_prompt, use_context=use_context
                 )
                 input_data = {"context": None, "question": user_prompt, "history": use_history}
 

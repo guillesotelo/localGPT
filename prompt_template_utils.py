@@ -5,7 +5,7 @@ This seems to have significant impact on the output of the LLM.
 """
 
 from langchain.memory import ConversationBufferMemory
-from langchain.prompts import PromptTemplate
+from langchain.prompts import PromptTemplate, ChatPromptTemplate
 import os
 
 CHAT_PRESENTATION = os.getenv('CHAT_PRESENTATION','')
@@ -168,6 +168,19 @@ def get_prompt_template(system_prompt=system_prompt, model_name=None, history=Fa
                     + B_ASSISTANT
                 )
             prompt = PromptTemplate(input_variables=["context", "input"], template=prompt_template)
+
+    elif model_name == "azure":
+        # Proper role-separated format for Azure OpenAI chat models (gpt-4.1-mini, etc.)
+        if use_context:
+            prompt = ChatPromptTemplate.from_messages([
+                ("system", system_prompt),
+                ("human", "Context: {context}\n{input}"),
+            ])
+        else:
+            prompt = ChatPromptTemplate.from_messages([
+                ("system", system_prompt),
+                ("human", "{input}"),
+            ])
 
     else:
         # change this based on the model you have selected.

@@ -57,7 +57,9 @@ from constants import (
     USE_AZURE_LLM,
     AZURE_SEMANTIC_K_DOCS,
     AZURE_FULLTEXT_K_DOCS,
+    ENABLE_WEB_SEARCH,
 )
+from web_search import web_search_fallback
 
 from hybrid_retriever import (
     HybridRetriever, 
@@ -397,15 +399,64 @@ def prompt_route():
                     if len(sorted_results) > 1 and (sorted_results[0][1] - sorted_results[1][1]) >= SLOPE_THRESHOLD:
                         filtered_results = [sorted_results[0][0]]
                 
-                # Out of scope questions
+                # Out of scope questions — try web search before giving up
                 if len(filtered_results) == 0:
+                    web_docs = []
+                    if ENABLE_WEB_SEARCH:
+                        yield "_Searching the web for more context..._\n\n"
+                        web_docs = web_search_fallback(curated_prompt)
+
+                    if web_docs:
+                        logging.info("[Web Search] Using %d web results as fallback context", len(web_docs))
+
+                        web_system_prompt = (
+                            "You are a helpful assistant. "
+                            "The following context comes from a public web search, not from internal documentation. "
+                            "Answer using only the provided web context. "
+                            "If the context does not contain enough information, say so clearly."
+                        )
+                        web_prompt, _ = get_prompt_template(
+                            system_prompt=web_system_prompt,
+                            model_name=PROMPT_MODEL_NAME,
+                            user_prompt=curated_prompt,
+                            use_context=True,
+                        )
+
+                        question_answer_chain = create_stuff_documents_chain(LLM, web_prompt)
+
+                        existing_callbacks = getattr(LLM, "callbacks", None) or []
+                        LLM.callbacks = existing_callbacks + [stop_handler]
+
+                        yield "\n> _This answer is based on a web search — not found in internal documentation._\n\n"
+
+                        for token in question_answer_chain.stream({"context": web_docs, "input": user_prompt}):
+                            if r_streams.hget(f"stream:{stream_id}", "stop") == b"1":
+                                logging.info(f"Stopping stream {stream_id} due to user request.")
+                                break
+                            print(token, end="", flush=True)
+                            yield token
+
+                        print()
+
+                        web_sources = [
+                            doc.metadata["source"]
+                            for doc in web_docs
+                            if doc.metadata.get("source")
+                        ]
+                        if web_sources:
+                            source_title = "Web Sources:" if len(web_sources) > 1 else "Web Source:"
+                            yield f"\n <br/><br/><strong>{source_title}</strong>"
+                            for src in web_sources[:4]:
+                                yield f"\n- {src}"
+                        return
+
                     about_knowledge = os.getenv('ABOUT_KNOWLEDGE', 'nourl')
                     oos_message = random.choice(OOS_MESSAGE) + f"\nTo understand more about my knowledgement, take a look at [this page]({about_knowledge})."
                     for word in oos_message.split(' '):
                         time.sleep(0.06)
                         yield f"{word} "
                     return
-                
+
                 # Build stream chain
                 question_answer_chain = create_stuff_documents_chain(LLM, prompt)
                 rag_chain = create_retrieval_chain(retriever, question_answer_chain)
@@ -424,10 +475,12 @@ def prompt_route():
                         logging.info(f"Stopping stream {stream_id} due to user request.")
                         break  # Exit the loop if stop signal is received
                     answer += token
+                    print(token, end="", flush=True)
                     yield token
-                        
+
+                print()
                 logging.info("""
-                             
+
                              """)
                 
 
@@ -456,6 +509,10 @@ def prompt_route():
                         unreleased_mark = ' (unreleased)' if 'UNRELEASED' in source else ''
                         time.sleep(0.15)  # Simulating streaming effect
                         sources_returned = 'yes'
+                        logging.info(f"Returned source: {source}")
+                        if "volvo_press_releases" in source:
+                            source = "[Volvo Cars»Press Releases](https://www.volvocars.com/intl/media/)"
+                        
                         yield f"\n- {source}{unreleased_mark}"
                 logging.info('\n \n')
                 logging.info(f"Sources returned: {sources_returned}")
@@ -618,11 +675,13 @@ def prompt_route_test():
                         logging.info(f"Stopping stream {stream_id} due to user request.")
                         break  # Exit the loop if stop signal is received
                     answer += token
+                    print(token, end="", flush=True)
                     yield token
-                        
+
+                print()
                 logging.info('\n \n')
                 logging.info('\n \n')
-                    
+
                 # ----- Source generation -----
                 source_retriever = RETRIEVER_MAP[from_source or 'HPx']['semantic_retriever']
                 results_with_scores = source_retriever.vectorstore.similarity_search_with_relevance_scores(answer, k=SEMANTIC_K_DOCS)

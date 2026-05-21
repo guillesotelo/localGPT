@@ -52,6 +52,11 @@ COLLECTION_METADATA = {"hnsw:space": "cosine"}
 # LLM backend switch — set True to route all inference through Azure OpenAI
 USE_AZURE_LLM = True
 
+# Web search fallback — when enabled, queries with no local document matches
+# are retried against DuckDuckGo before returning an out-of-scope message.
+# Only active when USE_AZURE_LLM is True (requires the large context window).
+ENABLE_WEB_SEARCH = True
+
 # Azure-optimised ingestion parameters (larger chunks exploit the 128k context window)
 AZURE_CHUNK_SIZE = int(os.getenv("AZURE_CHUNK_SIZE", 2048))
 AZURE_CHUNK_OVERLAP = int(os.getenv("AZURE_CHUNK_OVERLAP", 512))

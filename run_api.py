@@ -59,7 +59,7 @@ from constants import (
     AZURE_FULLTEXT_K_DOCS,
     ENABLE_WEB_SEARCH,
 )
-from web_search import web_search_fallback
+from web_search import web_search_fallback, context_is_sufficient
 
 from hybrid_retriever import (
     HybridRetriever, 
@@ -399,57 +399,13 @@ def prompt_route():
                     if len(sorted_results) > 1 and (sorted_results[0][1] - sorted_results[1][1]) >= SLOPE_THRESHOLD:
                         filtered_results = [sorted_results[0][0]]
                 
-                # Out of scope questions — try web search before giving up
-                if len(filtered_results) == 0:
-                    web_docs = []
-                    if ENABLE_WEB_SEARCH:
-                        yield "_Searching the web for more context..._\n\n"
-                        web_docs = web_search_fallback(curated_prompt)
+                # Fall back to below-threshold docs when nothing passed the score filters.
+                # The sufficiency check below will decide whether they're good enough or
+                # whether we should search the web instead.
+                effective_docs = filtered_results if filtered_results else results_with_scores[:3]
 
-                    if web_docs:
-                        logging.info("[Web Search] Using %d web results as fallback context", len(web_docs))
-
-                        web_system_prompt = (
-                            "You are a helpful assistant. "
-                            "The following context comes from a public web search, not from internal documentation. "
-                            "Answer using only the provided web context. "
-                            "If the context does not contain enough information, say so clearly."
-                        )
-                        web_prompt, _ = get_prompt_template(
-                            system_prompt=web_system_prompt,
-                            model_name=PROMPT_MODEL_NAME,
-                            user_prompt=curated_prompt,
-                            use_context=True,
-                        )
-
-                        question_answer_chain = create_stuff_documents_chain(LLM, web_prompt)
-
-                        existing_callbacks = getattr(LLM, "callbacks", None) or []
-                        LLM.callbacks = existing_callbacks + [stop_handler]
-
-                        yield "\n> _This answer is based on a web search — not found in internal documentation._\n\n"
-
-                        for token in question_answer_chain.stream({"context": web_docs, "input": user_prompt}):
-                            if r_streams.hget(f"stream:{stream_id}", "stop") == b"1":
-                                logging.info(f"Stopping stream {stream_id} due to user request.")
-                                break
-                            print(token, end="", flush=True)
-                            yield token
-
-                        print()
-
-                        web_sources = [
-                            doc.metadata["source"]
-                            for doc in web_docs
-                            if doc.metadata.get("source")
-                        ]
-                        if web_sources:
-                            source_title = "Web Sources:" if len(web_sources) > 1 else "Web Source:"
-                            yield f"\n <br/><br/><strong>{source_title}</strong>"
-                            for src in web_sources[:4]:
-                                yield f"\n- {src}"
-                        return
-
+                if not effective_docs:
+                    # Corpus has nothing remotely related — true OOS, no point asking the model
                     about_knowledge = os.getenv('ABOUT_KNOWLEDGE', 'nourl')
                     oos_message = random.choice(OOS_MESSAGE) + f"\nTo understand more about my knowledgement, take a look at [this page]({about_knowledge})."
                     for word in oos_message.split(' '):
@@ -457,23 +413,55 @@ def prompt_route():
                         yield f"{word} "
                     return
 
-                # Build stream chain
-                question_answer_chain = create_stuff_documents_chain(LLM, prompt)
-                rag_chain = create_retrieval_chain(retriever, question_answer_chain)
+                # Unified sufficiency gate — one LLM call handles both the "no docs passed
+                # threshold" case and the "docs found but answer still missing" case.
+                web_docs_added = []
+                if ENABLE_WEB_SEARCH and not context_is_sufficient(LLM, curated_prompt, effective_docs):
+                    logging.info("[Web Search] Context insufficient — running web search")
+                    yield "_Searching the web for additional context..._\n\n"
+                    web_results = web_search_fallback(curated_prompt)
 
-                chain = rag_chain.pick("answer")
+                    if web_results:
+                        web_docs_added = web_results
+                        effective_docs = web_results + effective_docs
+                    elif not filtered_results:
+                        # Below-threshold docs + web also failed → true OOS
+                        about_knowledge = os.getenv('ABOUT_KNOWLEDGE', 'nourl')
+                        oos_message = random.choice(OOS_MESSAGE) + f"\nTo understand more about my knowledgement, take a look at [this page]({about_knowledge})."
+                        for word in oos_message.split(' '):
+                            time.sleep(0.06)
+                            yield f"{word} "
+                        return
+                    # else: above-threshold docs exist but web failed → answer with local only
 
-                # Appending the stop callback to existing callbacks (so we don't overwrite the default stream logging)
+                # Pure web answer (no local docs passed threshold) uses a different system prompt
+                if web_docs_added and not filtered_results:
+                    answer_prompt, _ = get_prompt_template(
+                        system_prompt=(
+                            "You are a helpful assistant. "
+                            "The following context comes from a public web search, not from internal documentation. "
+                            "Answer using only the provided web context. "
+                            "If the context does not contain enough information, say so clearly."
+                        ),
+                        model_name=PROMPT_MODEL_NAME,
+                        user_prompt=curated_prompt,
+                        use_context=True,
+                    )
+                    yield "\n> _This answer is based on a web search — not found in internal documentation._\n\n"
+                else:
+                    answer_prompt = prompt
+
+                # Stream the answer directly with effective_docs (avoids a second retrieval)
+                question_answer_chain = create_stuff_documents_chain(LLM, answer_prompt)
                 existing_callbacks = getattr(LLM, "callbacks", None) or []
                 stop_handler = StopStreamHandler(stream_id, r_streams)
                 LLM.callbacks = existing_callbacks + [stop_handler]
 
                 answer = ''
-
-                for token in chain.stream({"input": user_prompt}):
+                for token in question_answer_chain.stream({"context": effective_docs, "input": user_prompt}):
                     if r_streams.hget(f"stream:{stream_id}", "stop") == b"1":
                         logging.info(f"Stopping stream {stream_id} due to user request.")
-                        break  # Exit the loop if stop signal is received
+                        break
                     answer += token
                     print(token, end="", flush=True)
                     yield token
@@ -482,12 +470,7 @@ def prompt_route():
                 logging.info("""
 
                              """)
-                
 
-                sources = []
-                sources_returned = 'no'
-                unique_sources = set()
-                
                 EXCLUDED_SOURCES = [
                     'AUX_DOCS',
                     'auxiliary_data',
@@ -495,7 +478,14 @@ def prompt_route():
                     '/More/Search.html',
                     'final_words.html',
                 ]
-                for doc in filtered_results:
+
+                # Local sources (skip web docs injected into effective_docs)
+                sources = []
+                sources_returned = 'no'
+                unique_sources = set()
+                for doc in effective_docs:
+                    if doc.metadata.get("origin") == "web":
+                        continue
                     source = doc.metadata.get("source", "Unknown Source")
                     if source not in unique_sources and not any(ex in source for ex in EXCLUDED_SOURCES):
                         unique_sources.add(source)
@@ -504,16 +494,23 @@ def prompt_route():
                 if sources:
                     source_title = "Sources:" if len(sources) > 1 else "Source:"
                     yield f"\n <br/><br/><strong>{source_title}</strong>"
-                    
                     for i, source in enumerate(sources[:4]):
                         unreleased_mark = ' (unreleased)' if 'UNRELEASED' in source else ''
-                        time.sleep(0.15)  # Simulating streaming effect
+                        time.sleep(0.15)
                         sources_returned = 'yes'
                         logging.info(f"Returned source: {source}")
                         if "volvo_press_releases" in source:
                             source = "[Volvo Cars»Press Releases](https://www.volvocars.com/intl/media/)"
-                        
                         yield f"\n- {source}{unreleased_mark}"
+
+                # Web sources (shown separately when web search was used)
+                if web_docs_added:
+                    web_sources = [d.metadata["source"] for d in web_docs_added if d.metadata.get("source")]
+                    if web_sources:
+                        yield f"\n <br/><strong>Web Sources:</strong>"
+                        for src in web_sources[:4]:
+                            yield f"\n- {src}"
+
                 logging.info('\n \n')
                 logging.info(f"Sources returned: {sources_returned}")
                 logging.info('\n \n')

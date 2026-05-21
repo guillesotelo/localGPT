@@ -32,7 +32,10 @@ def web_search_fallback(query: str, max_results: int = 4) -> list[Document]:
     Returns an empty list on any failure so callers can treat it as a soft fallback.
     """
     try:
-        from duckduckgo_search import DDGS
+        try:
+            from ddgs import DDGS  # current package name (renamed from duckduckgo_search)
+        except ImportError:
+            from duckduckgo_search import DDGS  # legacy fallback
 
         with DDGS() as ddgs:
             results = list(ddgs.text(query, max_results=max_results))

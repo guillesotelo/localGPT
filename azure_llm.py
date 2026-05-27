@@ -1,15 +1,13 @@
 import os
 import httpx
 from langchain_openai import AzureChatOpenAI
-
-AZURE_OPENAI_ENDPOINT = "https://ais-app-8493-436359.cognitiveservices.azure.com/"
-AZURE_OPENAI_DEPLOYMENT = "gpt-4.1-mini"
-AZURE_OPENAI_API_VERSION = "2024-12-01-preview"
-
-# gpt-4.1-mini: 128k context window, up to 16k output tokens
-AZURE_MAX_TOKENS = 16000
-AZURE_TEMPERATURE = 0.1
-
+from constants import (
+    AZURE_OPENAI_ENDPOINT,
+    AZURE_OPENAI_DEPLOYMENT,
+    AZURE_OPENAI_API_VERSION,
+    AZURE_MAX_TOKENS,
+    AZURE_TEMPERATURE,
+)
 
 def load_azure_model() -> AzureChatOpenAI:
     api_key = os.getenv("AZURE_OPENAI_API_KEY")

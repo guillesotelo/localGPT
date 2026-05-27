@@ -9,11 +9,8 @@ from langchain_community.embeddings import HuggingFaceInstructEmbeddings
 # from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_huggingface import HuggingFaceEmbeddings
 
-from transformers import AutoModel, AutoTokenizer
 import json
 import io
-from langchain.schema import BaseRetriever, Document
-from typing import List, Any
 
 
 def log_to_csv(question, answer):
@@ -168,7 +165,7 @@ def get_collection_size(db):
         
         
 # STOP HANDLER FOR LLM
-from langchain.callbacks.base import BaseCallbackHandler
+from langchain_core.callbacks import BaseCallbackHandler
 
 class StopStreamHandler(BaseCallbackHandler):
     def __init__(self, stream_id, redis_client):

@@ -40,7 +40,7 @@ TOP_P = float(os.getenv("TOP_P", 0.9))
 TOP_K = int(os.getenv("TOP_K", 20))
 
 # EMBEDDINGS
-SPLIT_SEPARATORS = ["\n\n", "\n", ". ", " ", ""]
+SPLIT_SEPARATORS = ["# ", "## ", "### ", "#### ", "\n\n", "\n", ". ", " ", ""]
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", 1024)) # 2048 - qwen update
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", 256)) # 512 - qwen update
 FETCH_K_DOCS = int(os.getenv("FETCH_K_DOCS", 10)) # 20 - qwen update 50
@@ -51,6 +51,13 @@ COLLECTION_METADATA = {"hnsw:space": "cosine"}
 
 # LLM backend switch — set True to route all inference through Azure OpenAI
 USE_AZURE_LLM = True
+AZURE_OPENAI_ENDPOINT = "https://ais-app-8493-436359.cognitiveservices.azure.com/"
+AZURE_OPENAI_DEPLOYMENT = "gpt-4.1-mini"
+AZURE_OPENAI_API_VERSION = "2024-12-01-preview"
+
+# gpt-4.1-mini: 128k context window, up to 16k output tokens
+AZURE_MAX_TOKENS = 16000
+AZURE_TEMPERATURE = 0.1
 
 # Web search fallback — when enabled, queries with no local document matches
 # are retried against DuckDuckGo before returning an out-of-scope message.
@@ -58,13 +65,20 @@ USE_AZURE_LLM = True
 ENABLE_WEB_SEARCH = True
 
 # Azure-optimised ingestion parameters (larger chunks exploit the 128k context window)
-AZURE_CHUNK_SIZE = int(os.getenv("AZURE_CHUNK_SIZE", 2048))
-AZURE_CHUNK_OVERLAP = int(os.getenv("AZURE_CHUNK_OVERLAP", 512))
+# NOTE: changing these only affects the next re-ingest, not the existing DB
+AZURE_CHUNK_SIZE = int(os.getenv("AZURE_CHUNK_SIZE", 4096))
+AZURE_CHUNK_OVERLAP = int(os.getenv("AZURE_CHUNK_OVERLAP", 1024))
 
 # Azure-optimised retrieval — scaled to fill the 128k context window
-AZURE_SEMANTIC_K_DOCS = int(os.getenv("AZURE_SEMANTIC_K_DOCS", 18))
-AZURE_FULLTEXT_K_DOCS = int(os.getenv("AZURE_FULLTEXT_K_DOCS", 6))
-AZURE_K_FINAL = int(os.getenv("AZURE_K_FINAL", 20))
+AZURE_SEMANTIC_K_DOCS = int(os.getenv("AZURE_SEMANTIC_K_DOCS", 25))
+AZURE_FULLTEXT_K_DOCS = int(os.getenv("AZURE_FULLTEXT_K_DOCS", 10))
+AZURE_K_FINAL = int(os.getenv("AZURE_K_FINAL", 30))
+
+# Score thresholds for filtering retrieved docs before sending to the LLM.
+# Lowering these increases recall (more docs pass) at the cost of some noise.
+AZURE_HIGH_THRESHOLD = float(os.getenv("AZURE_HIGH_THRESHOLD", 0.45))
+AZURE_MID_THRESHOLD = float(os.getenv("AZURE_MID_THRESHOLD", 0.35))
+AZURE_SLOPE_THRESHOLD = float(os.getenv("AZURE_SLOPE_THRESHOLD", 0.05))
 
 CATEGORY_MAP = {
     "HPx": [],  # special: ingests ALL files
@@ -348,7 +362,7 @@ COMMON_WORDS = ["a","abandon","ability","able","abortion","about","above","abroa
 
 
 # -------------------------
-# CONSTANTS TO BE USED BY ANALYZER
+# CONSTANTS TO BE USED BY GDPR-DLT ANALYZER
 # -------------------------
 
 SEVERITY_MAP = {

@@ -55,11 +55,29 @@ from constants import (
     CATEGORY_MAP,
     OOS_MESSAGE,
     USE_AZURE_LLM,
+    AZURE_OPENAI_DEPLOYMENT,
+    AZURE_OPENAI_API_VERSION,
     AZURE_SEMANTIC_K_DOCS,
     AZURE_FULLTEXT_K_DOCS,
+    AZURE_MAX_TOKENS,
+    AZURE_TEMPERATURE,
+    AZURE_CHUNK_SIZE,
+    AZURE_CHUNK_OVERLAP,
+    AZURE_K_FINAL,
+    AZURE_HIGH_THRESHOLD,
+    AZURE_MID_THRESHOLD,
+    AZURE_SLOPE_THRESHOLD,
     ENABLE_WEB_SEARCH,
 )
 from web_search import web_search_fallback, context_is_sufficient
+
+from langchain.prompts import PromptTemplate as LCPromptTemplate
+
+# Injects the source filename as a header above each chunk so the LLM can
+# distinguish which documentation file each excerpt belongs to.
+_DOC_PROMPT = LCPromptTemplate.from_template(
+    "[Source: {source}]\n{page_content}"
+)
 
 from hybrid_retriever import (
     HybridRetriever, 
@@ -329,14 +347,14 @@ def prompt_route():
 
                 if from_source == 'SNOK':
                     prompt, memory = get_prompt_template(
-                        system_prompt=SNOK_SYSTEM_PROMPT,
+                        # system_prompt=SNOK_SYSTEM_PROMPT,
                         model_name=PROMPT_MODEL_NAME,
                         user_prompt=user_prompt, 
                         use_context=use_context
                     )
                 elif 'elarch' in from_source.lower():
                     prompt, memory = get_prompt_template(
-                        system_prompt=ELARCH_SYSTEM_PROMPT,
+                        # system_prompt=ELARCH_SYSTEM_PROMPT,
                         model_name=PROMPT_MODEL_NAME,
                         user_prompt=user_prompt, 
                         use_context=use_context
@@ -358,9 +376,9 @@ def prompt_route():
                 for doc in results_with_scores:
                     logging.info(f"Document: {doc.metadata.get('source', 'Unknown Source')} | Score: {doc.metadata.get('score', 0)}")
 
-                HIGH_THRESHOLD = 0.5
-                MID_THRESHOLD = 0.45
-                SLOPE_THRESHOLD = 0.1
+                HIGH_THRESHOLD = AZURE_HIGH_THRESHOLD if USE_AZURE_LLM else 0.5
+                MID_THRESHOLD = AZURE_MID_THRESHOLD if USE_AZURE_LLM else 0.45
+                SLOPE_THRESHOLD = AZURE_SLOPE_THRESHOLD if USE_AZURE_LLM else 0.1
 
                 filtered_results = [
                     doc for doc, score in sorted(
@@ -418,7 +436,7 @@ def prompt_route():
                 web_docs_added = []
                 if ENABLE_WEB_SEARCH and not context_is_sufficient(LLM, curated_prompt, effective_docs):
                     logging.info("[Web Search] Context insufficient — running web search")
-                    yield "_Searching the web for additional context..._\n\n"
+                    yield "[_Web search..._](#web-search-indicator)\n\n"
                     web_results = web_search_fallback(curated_prompt)
 
                     if web_results:
@@ -435,6 +453,7 @@ def prompt_route():
                     # else: above-threshold docs exist but web failed → answer with local only
 
                 # Pure web answer (no local docs passed threshold) uses a different system prompt
+                return_soruces = True
                 if web_docs_added and not filtered_results:
                     answer_prompt, _ = get_prompt_template(
                         system_prompt=(
@@ -447,12 +466,13 @@ def prompt_route():
                         user_prompt=curated_prompt,
                         use_context=True,
                     )
-                    yield "\n> _This answer is based on a web search — not found in internal documentation._\n\n"
+                    yield "\n> **_This answer is based solely on a web search — not found in internal documentation._**\n\n"
+                    return_soruces = False
                 else:
                     answer_prompt = prompt
 
                 # Stream the answer directly with effective_docs (avoids a second retrieval)
-                question_answer_chain = create_stuff_documents_chain(LLM, answer_prompt)
+                question_answer_chain = create_stuff_documents_chain(LLM, answer_prompt, document_prompt=_DOC_PROMPT)
                 existing_callbacks = getattr(LLM, "callbacks", None) or []
                 stop_handler = StopStreamHandler(stream_id, r_streams)
                 LLM.callbacks = existing_callbacks + [stop_handler]
@@ -491,7 +511,7 @@ def prompt_route():
                         unique_sources.add(source)
                         sources.append(source)
 
-                if sources:
+                if sources and return_soruces:
                     source_title = "Sources:" if len(sources) > 1 else "Source:"
                     yield f"\n <br/><br/><strong>{source_title}</strong>"
                     for i, source in enumerate(sources[:4]):
@@ -505,11 +525,35 @@ def prompt_route():
 
                 # Web sources (shown separately when web search was used)
                 if web_docs_added:
-                    web_sources = [d.metadata["source"] for d in web_docs_added if d.metadata.get("source")]
-                    if web_sources:
-                        yield f"\n <br/><strong>Web Sources:</strong>"
-                        for src in web_sources[:4]:
-                            yield f"\n- {src}"
+                    from urllib.parse import urlparse
+
+                    yield f"\n <br/><strong>Web Sources:</strong>"
+                    
+                    seen_web_urls = set()
+                    web_count = 0
+                    
+                    for doc in web_docs_added:
+                        if web_count >= 4:
+                            break
+                            
+                        url = doc.metadata.get("source", "").strip()
+                        if not url or url in seen_web_urls:
+                            continue
+                        seen_web_urls.add(url)
+                        
+                        try:
+                            parsed_url = urlparse(url)
+                            domain = parsed_url.netloc.replace("www.", "")
+                        except Exception:
+                            domain = ''
+
+                        raw_title = doc.metadata.get("title", "").strip()
+                        if not raw_title:
+                            raw_title = domain or url
+
+                        yield f"\n- [{raw_title}]({url})"
+                        web_count += 1
+                    answer_prompt = prompt
 
                 logging.info('\n \n')
                 logging.info(f"Sources returned: {sources_returned}")
@@ -655,7 +699,7 @@ def prompt_route_test():
 
                 # Build stream chain
                 retriever = RETRIEVER_MAP[from_source or 'HPx']['hybrid_retriever']
-                question_answer_chain = create_stuff_documents_chain(LLM, prompt)
+                question_answer_chain = create_stuff_documents_chain(LLM, prompt, document_prompt=_DOC_PROMPT)
                 rag_chain = create_retrieval_chain(retriever, question_answer_chain)
 
                 chain = rag_chain.pick("answer")
@@ -1134,7 +1178,7 @@ def delete_analytics():
 def get_model_settings():
     try:
         model_settings = {
-            "model_name": MODEL_NAME,
+            "local_model_name": MODEL_NAME,
             "db_date": DB_DATE.strftime("%a, %d %b %Y %H:%M:%S GMT") if hasattr(DB_DATE, "strftime") else str(DB_DATE),
             "device": DEVICE_TYPE,
             "ctx_size": CONTEXT_WINDOW_SIZE,
@@ -1149,8 +1193,20 @@ def get_model_settings():
             "chunk_overlap": CHUNK_OVERLAP,
             "retrieve_k": SEMANTIC_K_DOCS,
             "collection_meta": COLLECTION_METADATA,
-            "model_basename": MODEL_BASENAME,
-            "embeddings": EMBEDDING_MODEL_NAME
+            "local_model_basename": MODEL_BASENAME,
+            "embeddings": EMBEDDING_MODEL_NAME,
+            "using_azure": USE_AZURE_LLM,
+            "azure_openai_llm": AZURE_OPENAI_DEPLOYMENT,
+            "azure_openai_api_version": AZURE_OPENAI_API_VERSION,
+            "azure_max_tokens": AZURE_MAX_TOKENS,
+            "azure_temperature": AZURE_TEMPERATURE,
+            "azure_chunk_size": AZURE_CHUNK_SIZE,
+            "azure_chunk_overlap": AZURE_CHUNK_OVERLAP,
+            "azure_semantic_k_docs": AZURE_SEMANTIC_K_DOCS,
+            "azure_fulltext_k_docs": AZURE_FULLTEXT_K_DOCS,
+            "azure_k_final": AZURE_K_FINAL,
+            "web_search_enabled": ENABLE_WEB_SEARCH,
+            "category_map": CATEGORY_MAP
         }
         return jsonify(model_settings)
     

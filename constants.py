@@ -84,6 +84,7 @@ CATEGORY_MAP = {
     "HPx": [],  # special: ingests ALL files
     "LEGACY_HPx": ['special legacy DB, no match in filenames'],
     "HPXA": ["hpxa"],
+    "BAZEL": ["bazel"],
     "SNOK": ["snok"],
     "HPSDK": ["hp sdk", "hpsdk"],
     "CSTOOL": ["cs tool", "cstool", "bazel"],

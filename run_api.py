@@ -295,7 +295,7 @@ def prompt_route():
         print('\n')
         logging.info(f"""
                      
-                     Category soruce: {from_source} not found. Falling back to HP
+                     Category soruce: {from_source} not found. Falling back to HPx
                      
         """)
         from_source = 'HPx'

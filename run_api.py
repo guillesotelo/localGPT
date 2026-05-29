@@ -291,14 +291,11 @@ def prompt_route():
     stop = request.form.get("stop", "false").lower() == "true"
     error = ''
     
-    if from_source not in RETRIEVER_MAP or not RETRIEVER_MAP[from_source]:
-        print('\n')
-        logging.info(f"""
-                     
-                     Category soruce: {from_source} not found. Falling back to HPx
-                     
-        """)
-        from_source = 'HPx'
+    from_sources = [s.strip() for s in (from_source or '').split(',') if s.strip() in RETRIEVER_MAP and RETRIEVER_MAP.get(s.strip())]
+    if not from_sources:
+        logging.info(f"Source(s) '{from_source}' not found in RETRIEVER_MAP. Falling back to HPx.")
+        from_sources = ['HPx']
+    from_source = ','.join(from_sources)
 
     if stop:
         logging.info(f"Attempting to stop stream ID: {stream_id}")
@@ -367,11 +364,20 @@ def prompt_route():
                     )
                     
 
-                retriever = RETRIEVER_MAP[from_source or 'HPx']['hybrid_retriever']
-                    
-                # ----- Source extraction -----
+                # ----- Source extraction (supports multiple comma-separated sources) -----
                 curated_prompt = user_prompt.split('\n<<retry_')[0]
-                results_with_scores = retriever.get_relevant_documents(curated_prompt)
+
+                if len(from_sources) == 1:
+                    results_with_scores = RETRIEVER_MAP[from_sources[0]]['hybrid_retriever'].get_relevant_documents(curated_prompt)
+                else:
+                    seen_content: set = set()
+                    results_with_scores = []
+                    for src in from_sources:
+                        for doc in RETRIEVER_MAP[src]['hybrid_retriever'].get_relevant_documents(curated_prompt):
+                            if doc.page_content not in seen_content:
+                                seen_content.add(doc.page_content)
+                                results_with_scores.append(doc)
+                    results_with_scores.sort(key=lambda d: d.metadata.get('score', 0), reverse=True)
 
                 for doc in results_with_scores:
                     logging.info(f"Document: {doc.metadata.get('source', 'Unknown Source')} | Score: {doc.metadata.get('score', 0)}")

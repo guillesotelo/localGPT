@@ -87,7 +87,7 @@ CATEGORY_MAP = {
     "BAZEL": ["bazel"],
     "SNOK": ["snok"],
     "HPSDK": ["hp sdk", "hpsdk"],
-    "CSTOOL": ["cs tool", "cstool", "bazel"],
+    "CSTOOL": ["cs tool", "cstool"],
     "CSSTATS": ["cs stats", "csstats"],
     "MOCK": ["mock"],
     "ZUUL": ["zuul"],
